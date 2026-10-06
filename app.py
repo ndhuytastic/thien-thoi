@@ -1,4 +1,5 @@
 import streamlit as st
+from skyfield.api import load, Topos
 import datetime
 import pytz
 import pandas as pd
@@ -17,26 +18,6 @@ st.markdown("""
     div[data-testid="stMarkdownContainer"] > blockquote {border-left-color: #7F8C8D; background-color: #F2F3F4; padding: 10px 15px;}
     </style>
 """, unsafe_allow_html=True)
-
-# ==========================================
-# XỬ LÝ LỖI MÔI TRƯỜNG CHUYÊN NGHIỆP
-# ==========================================
-try:
-    from skyfield.api import load, Topos
-    from skyfield.framelib import ecliptic_J2000
-except ImportError:
-    st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT)")
-    st.markdown("""
-    > **Nguyên nhân:** Máy chủ Streamlit Cloud đang lưu cache phiên bản thư viện cũ.
-    > 
-    > **Cách khắc phục nhanh:**
-    > 1. Nhìn xuống **góc dưới cùng bên phải** màn hình, bấm vào nút **'Manage app'**.
-    > 2. Bấm vào biểu tượng **3 dấu chấm (⋮)** ở góc trên thanh menu vừa hiện ra.
-    > 3. Chọn **'Reboot app'** hoặc **'Clear cache and deploy'**.
-    > 
-    > *Sau khi Reboot, hệ thống sẽ tự động cập nhật thư viện từ file requirements.txt và hoạt động bình thường.*
-    """)
-    st.stop() # Dừng chạy code bên dưới nếu lỗi thư viện
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE (SKYFIELD)
@@ -71,7 +52,7 @@ def get_di_chi(degree): return DI_CHI[int(((degree + 15) % 360) / 30)]
 def get_24_son(azimuth): return SƠN_24[int(((azimuth + 7.5) % 360) / 15)]
 
 # ==========================================
-# 2. HÀM TÍNH TOÁN
+# 2. HÀM TÍNH TOÁN (TỰ ĐỘNG THÍCH ỨNG PHIÊN BẢN MÁY CHỦ)
 # ==========================================
 def calculate_positions(dt, lat, lon, active_bodies):
     time = ts.from_datetime(dt)
@@ -83,7 +64,15 @@ def calculate_positions(dt, lat, lon, active_bodies):
         body_node = info['node']
         
         astrometric = earth.at(time).observe(body_node)
-        lat_ecl, lon_ecl, _ = astrometric.frame_latlon(ecliptic_J2000)
+        
+        # Bắt lỗi phiên bản Skyfield: Dùng code mới nếu có, dùng code cũ nếu máy chủ chưa update
+        try:
+            from skyfield.framelib import ecliptic_J2000
+            lat_ecl, lon_ecl, _ = astrometric.frame_latlon(ecliptic_J2000)
+        except ImportError:
+            # Fallback cho các máy chủ Streamlit Cloud chạy thư viện cũ
+            lat_ecl, lon_ecl, _ = astrometric.ecliptic_latlon()
+
         alt, az, _ = location.at(time).observe(body_node).apparent().altaz()
         
         results.append({
