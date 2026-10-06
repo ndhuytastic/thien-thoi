@@ -173,7 +173,7 @@ with tab2:
     with col_b1:
         birth_date = st.date_input("Ngày sinh (Dương lịch)", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1))
     with col_b2:
-        birth_time = st.time_input("Giờ sinh", value=datetime.time(8, 15s))
+        birth_time = st.time_input("Giờ sinh", value=datetime.time(8, 15))
         
     dt_birth = local_tz.localize(datetime.datetime.combine(birth_date, birth_time))
     
