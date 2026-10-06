@@ -8,9 +8,9 @@ import numpy as np
 # ==========================================
 # CẤU HÌNH TRANG & STATE
 # ==========================================
-st.set_page_config(page_title="Thiên Thời Sách - Phân Tích Tinh Tượng", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Tinh Tượng Trạch Nhật", layout="wide", initial_sidebar_state="expanded")
 
-st.markdown("<h3 style='text-align: center; color: #2C3E50; margin-top: -40px; margin-bottom: 20px; font-weight: bold;'>HỆ THỐNG PHÂN TÍCH TINH TƯỢNG TRẠCH NHẬT</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #2C3E50; margin-top: -40px; margin-bottom: 20px; font-weight: bold;'>TINH TƯỢNG TRẠCH NHẬT</h3>", unsafe_allow_html=True)
 
 st.markdown("""
     <style>
@@ -97,7 +97,7 @@ def calculate_positions(dt, lat, lon, active_bodies):
     return pd.DataFrame(results)
 
 # ==========================================
-# 3. HÀM VẼ LA BÀN (NAM Ở TRÊN)
+# 3. HÀM VẼ LA BÀN
 # ==========================================
 def draw_professional_luopan(df):
     fig = go.Figure()
@@ -135,12 +135,12 @@ def draw_professional_luopan(df):
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
 st.sidebar.markdown("### CÀI ĐẶT THÔNG SỐ")
-lat = st.sidebar.number_input("Vĩ độ (Lat)", value=21.0285, format="%.4f")
-lon = st.sidebar.number_input("Kinh độ (Lon)", value=105.8542, format="%.4f")
+lat = st.sidebar.number_input("Vĩ độ (Latitude)", value=21.0285, format="%.4f")
+lon = st.sidebar.number_input("Kinh độ (Longitude)", value=105.8542, format="%.4f")
 
 # Đọc từ Session State
-st.session_state.target_date = st.sidebar.date_input("Ngày (Dương lịch)", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
-st.session_state.target_time = st.sidebar.time_input("Giờ địa phương", value=st.session_state.target_time)
+st.session_state.target_date = st.sidebar.date_input("Ngày", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
+st.session_state.target_time = st.sidebar.time_input("Giờ", value=st.session_state.target_time)
 
 st.sidebar.markdown("**Hiển thị Thiên thể**")
 col_cb1, col_cb2 = st.sidebar.columns(2)
@@ -162,22 +162,22 @@ tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI X
 with tab1:
     col1_1, col1_2, col1_3 = st.columns([1, 2, 1])
     with col1_2:
-        st.markdown(f"**ĐỒ HÌNH BẦU TRỜI (NAM LÊN TRÊN)** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
+        st.markdown(f"**ĐỒ HÌNH** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
         fig = draw_professional_luopan(df_target)
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True}) # Bật thanh công cụ để có nút Fullscreen
 
 # ----------------- TAB 2 -----------------
 with tab2:
-    st.markdown("### ĐỐI CHIẾU LÁ SỐ BẨM SINH & THỜI ĐIỂM DỰ KIẾN")
+    st.markdown("### ĐỐI CHIẾU LÁ SỐ & THỜI ĐIỂM DỰ KIẾN")
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        birth_date = st.date_input("Ngày sinh (Dương lịch)", value=datetime.date(1990, 1, 1), min_value=datetime.date(1900, 1, 1))
+        birth_date = st.date_input("Ngày sinh (Dương lịch)", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1))
     with col_b2:
-        birth_time = st.time_input("Giờ sinh", value=datetime.time(12, 0))
+        birth_time = st.time_input("Giờ sinh", value=datetime.time(8, 15s))
         
     dt_birth = local_tz.localize(datetime.datetime.combine(birth_date, birth_time))
     
-    if st.button("Thực Thi Kiểm Tra", type="primary"):
+    if st.button("Kiểm Tra", type="primary"):
         df_birth = calculate_positions(dt_birth, lat, lon, list(CELESTIAL_BODIES.keys()))
         df_target_full = calculate_positions(dt_target, lat, lon, list(CELESTIAL_BODIES.keys()))
         def check_xung(c1, c2): return abs(DI_CHI_ZH.index(c1) - DI_CHI_ZH.index(c2)) == 6
@@ -225,7 +225,7 @@ with tab3:
             st.info("Chỉ quét ngày Thượng/Hạ Huyền (Nhật Nguyệt 90°)")
             scan_days = 60
             
-    if st.button("Thực Thi Quét Phân Tích", type="primary"):
+    if st.button("Tìm Kiếms", type="primary"):
         progress = st.progress(0)
         location = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
         results = []
@@ -302,7 +302,7 @@ with tab3:
                 
                 # Check nhanh Pha Sóc Vọng nếu là Cấp Cao
                 is_soc_vong = False
-                if level == "Cao cấp (Sóc/Vọng Nguyệt)":
+                if level == "Sóc/Vọng Nguyệt":
                     t_noon = ts.utc(check_day.year, check_day.month, check_day.day, 12, 0)
                     sun_ecl = earth.at(t_noon).observe(CELESTIAL_BODIES['Thái Dương']['node']).ecliptic_latlon()[1].degrees
                     moon_ecl = earth.at(t_noon).observe(CELESTIAL_BODIES['Thái Âm']['node']).ecliptic_latlon()[1].degrees
@@ -326,7 +326,7 @@ with tab3:
                 if len(valid_mins) > 0:
                     best_events_today = []
                     
-                    if level == "Sơ cấp (Chỉ Thái Âm)":
+                    if level == "Thái Âm Đáo Sơn":
                         # Tìm phút góc Trăng gần tâm Sơn nhất
                         diffs = get_angular_diff_vec(moon_az_arr[valid_mins], son_center_deg)
                         best_local_idx = np.argmin(diffs)
@@ -334,7 +334,7 @@ with tab3:
                         exact_time = datetime.datetime.combine(check_day, datetime.time(best_min // 60, best_min % 60))
                         best_events_today.append((diffs[best_local_idx], exact_time, "Thái Âm chính trung Sơn", "-"))
                         
-                    elif level == "Trung cấp (Đa Tinh Đáo Sơn)":
+                    elif level == "Đa Tinh Đáo Sơn":
                         # Lấy data các sao khác trong ngày
                         other_bodies_az = {}
                         for ob in scan_bodies:
@@ -414,7 +414,7 @@ with tab3:
             st.dataframe(df_res.drop(columns=['Raw_Time']), use_container_width=True)
             
             # TÍNH NĂNG CHỌN ĐỂ XEM ĐỒ HÌNH
-            st.markdown("### 👉 XEM TRỰC TIẾP TRÊN LA BÀN")
+            st.markdown("XEM TRỰC TIẾP TRÊN LA BÀN")
             options = {f"{r['Ngày']} - {r['Giờ Cực Đỉnh']} ({r['Hiện Tượng']})": r['Raw_Time'] for r in results}
             selected_option = st.selectbox("Chọn một kết quả để cập nhật La Bàn ở TAB 1:", list(options.keys()))
             
