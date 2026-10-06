@@ -1,27 +1,42 @@
 import streamlit as st
-from skyfield.api import load, Topos
-from skyfield.framelib import ecliptic_J2000
 import datetime
 import pytz
 import pandas as pd
 import plotly.graph_objects as go
 
 # ==========================================
-# CẤU HÌNH TRANG CHUYÊN NGHIỆP (KHÔNG EMOJI)
+# CẤU HÌNH TRANG CHUYÊN NGHIỆP
 # ==========================================
 st.set_page_config(page_title="Thiên Thời Sách - Phân Tích Tinh Tượng", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    /* Chỉnh sửa giao diện Tabs phẳng, chuyên nghiệp */
     .stTabs [data-baseweb="tab-list"] {gap: 10px;}
     .stTabs [data-baseweb="tab"] {height: 45px; white-space: pre-wrap; background-color: #F8F9F9; border-radius: 2px 2px 0 0; padding: 0 20px; border: 1px solid #E5E7E9; border-bottom: none;}
     .stTabs [aria-selected="true"] {background-color: #FFFFFF; border-top: 3px solid #2C3E50; font-weight: bold;}
-    
-    /* Chỉnh màu các khối thông báo thành xám/đen thay vì màu mè */
     div[data-testid="stMarkdownContainer"] > blockquote {border-left-color: #7F8C8D; background-color: #F2F3F4; padding: 10px 15px;}
     </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# XỬ LÝ LỖI MÔI TRƯỜNG CHUYÊN NGHIỆP
+# ==========================================
+try:
+    from skyfield.api import load, Topos
+    from skyfield.framelib import ecliptic_J2000
+except ImportError:
+    st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT)")
+    st.markdown("""
+    > **Nguyên nhân:** Máy chủ Streamlit Cloud đang lưu cache phiên bản thư viện cũ.
+    > 
+    > **Cách khắc phục nhanh:**
+    > 1. Nhìn xuống **góc dưới cùng bên phải** màn hình, bấm vào nút **'Manage app'**.
+    > 2. Bấm vào biểu tượng **3 dấu chấm (⋮)** ở góc trên thanh menu vừa hiện ra.
+    > 3. Chọn **'Reboot app'** hoặc **'Clear cache and deploy'**.
+    > 
+    > *Sau khi Reboot, hệ thống sẽ tự động cập nhật thư viện từ file requirements.txt và hoạt động bình thường.*
+    """)
+    st.stop() # Dừng chạy code bên dưới nếu lỗi thư viện
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE (SKYFIELD)
@@ -92,7 +107,6 @@ def draw_professional_luopan(df):
     df_visible = df[df['Altitude (°)'] >= -10].copy()
 
     for idx, row in df_visible.iterrows():
-        # Thái Dương & Thái Âm kích thước lớn hơn một chút
         marker_size = 12 if row['Tên'] in ['Thái Dương', 'Thái Âm'] else 8
         text_weight = "bold" if row['Tên'] in ['Thái Dương', 'Thái Âm'] else "normal"
         
@@ -116,21 +130,13 @@ def draw_professional_luopan(df):
                 tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24,
                 showline=True, linewidth=1, linecolor='#7F8C8D', gridcolor='#E5E7E9'
             ),
-            radialaxis=dict(
-                visible=True, range=[0, 90],
-                showticklabels=False, gridcolor='#E5E7E9', angle=90
-            )
+            radialaxis=dict(visible=True, range=[0, 90], showticklabels=False, gridcolor='#E5E7E9', angle=90)
         ),
-        showlegend=False,
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        margin=dict(t=40, b=40, l=40, r=40),
-        height=600
+        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=40, b=40, l=40, r=40), height=600
     )
     
     fig.add_trace(go.Scatterpolar(r=[30, 30], theta=[0, 360], mode='lines', line=dict(color='#BDC3C7', dash='dot'), hoverinfo='skip'))
     fig.add_trace(go.Scatterpolar(r=[60, 60], theta=[0, 360], mode='lines', line=dict(color='#BDC3C7', dash='dot'), hoverinfo='skip'))
-
     return fig
 
 # ==========================================
@@ -157,13 +163,10 @@ df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
 st.markdown("<h2 style='text-align: center; color: #2C3E50; margin-bottom: 30px;'>HỆ THỐNG PHÂN TÍCH TINH TƯỢNG TRẠCH NHẬT</h2>", unsafe_allow_html=True)
 
-# Tabs
 tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. ĐỐI XUNG CÁ NHÂN", "III. TRA CỨU LIÊN CHÂU"])
 
-# ----------------- TAB 1 -----------------
 with tab1:
     col_chart, col_data = st.columns([1.5, 1])
-    
     with col_chart:
         st.markdown(f"**ĐỒ HÌNH BẦU TRỜI TẠI THỰC ĐỊA** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
         st.caption("Tâm biểu đồ = Thiên đỉnh (90°). Viền ngoài = Đường chân trời (0°).")
@@ -173,13 +176,10 @@ with tab1:
     with col_data:
         st.markdown("**BẢNG THÔNG SỐ TỌA ĐỘ**")
         st.dataframe(df_target[['Tên', 'Ký Hiệu', 'Sơn', 'Azimuth (°)', 'Altitude (°)']], hide_index=True, use_container_width=True)
-        
         st.markdown("> **Hướng dẫn phân tích:**\n> - Dùng góc Azimuth (0-360) để so khớp với la bàn đo thực tế tại công trình.\n> - Các hành tinh có Altitude < 0 hiện đang nằm dưới chân trời.")
 
-# ----------------- TAB 2 -----------------
 with tab2:
     st.markdown("### ĐỐI CHIẾU LÁ SỐ BẨM SINH & THỜI ĐIỂM DỰ KIẾN")
-    
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         birth_date = st.date_input("Ngày sinh (Dương lịch)", value=datetime.date(1990, 1, 1))
@@ -190,9 +190,7 @@ with tab2:
     
     if st.button("Thực Thi Kiểm Tra", type="primary"):
         df_birth = calculate_positions(dt_birth, lat, lon, active_bodies)
-        
-        def check_xung(c1, c2):
-            return abs(DI_CHI.index(c1) - DI_CHI.index(c2)) == 6
+        def check_xung(c1, c2): return abs(DI_CHI.index(c1) - DI_CHI.index(c2)) == 6
             
         try:
             jup_b = df_birth.loc[df_birth['Tên'] == 'Mộc Tinh', 'Chi'].values[0]
@@ -230,7 +228,6 @@ with tab2:
         except Exception as e:
             st.markdown("> **[LỖI DỮ LIỆU]** Vui lòng đảm bảo đã bật hiển thị Thái Dương, Thái Âm và Mộc Tinh ở menu cài đặt để thực hiện thuật toán này.")
 
-# ----------------- TAB 3 -----------------
 with tab3:
     st.markdown("### THUẬT TOÁN QUÉT ĐA TINH LIÊN CHÂU")
     st.markdown("Hệ thống sẽ quét các dữ liệu ephemeris để tìm ra các thời điểm thiên thể hội tụ (Alignment) trong tương lai.")
@@ -284,7 +281,6 @@ with tab3:
                     })
                     
         progress_bar.progress(100)
-        
         st.markdown("---")
         if results_lc:
             st.markdown(f"**KẾT QUẢ:** Tìm thấy {len(results_lc)} chu kỳ thỏa mãn điều kiện.")
