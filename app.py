@@ -9,6 +9,9 @@ import plotly.graph_objects as go
 # ==========================================
 st.set_page_config(page_title="Thiên Thời Sách - Phân Tích Tinh Tượng", layout="wide", initial_sidebar_state="expanded")
 
+# Đưa tiêu đề lên cao nhất, chữ nhỏ, chuyên nghiệp
+st.markdown("<h3 style='text-align: center; color: #2C3E50; margin-top: -40px; margin-bottom: 20px; font-weight: bold;'>HỆ THỐNG PHÂN TÍCH TINH TƯỢNG TRẠCH NHẬT</h3>", unsafe_allow_html=True)
+
 st.markdown("""
     <style>
     .stTabs [data-baseweb="tab-list"] {gap: 10px;}
@@ -22,7 +25,7 @@ st.markdown("""
 try:
     from skyfield.api import load, Topos
 except ImportError:
-    st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT)")
+    st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT). Vui lòng bấm 'Manage app' góc dưới bên phải -> Chọn dấu 3 chấm -> Reboot app.")
     st.stop()
 
 # ==========================================
@@ -56,6 +59,7 @@ SƠN_24_ZH = ["子", "癸", "丑", "艮", "寅", "甲", "卯", "乙", "辰", "�
 
 def get_di_chi(degree): return DI_CHI_ZH[int(((degree + 15) % 360) / 30)]
 def get_24_son(azimuth): return SƠN_24_ZH[int(((azimuth + 7.5) % 360) / 15)]
+def get_angular_diff(a1, a2): return min((a1 - a2) % 360, (a2 - a1) % 360)
 
 # ==========================================
 # 2. HÀM TÍNH TOÁN
@@ -82,16 +86,16 @@ def calculate_positions(dt, lat, lon, active_bodies):
             "Tên": name,
             "Ký Hiệu": info['char'],
             "Màu": info['color'],
-            "Hoàng Đạo (°)": round(lon_ecl.degrees, 2),
+            "Hoàng Đạo (°)": round(lon_ecl.degrees, 4),
             "Chi": get_di_chi(lon_ecl.degrees),
-            "Azimuth (°)": round(az.degrees, 2),
-            "Altitude (°)": round(alt.degrees, 2),
+            "Azimuth (°)": round(az.degrees, 4),
+            "Altitude (°)": round(alt.degrees, 4),
             "Sơn": get_24_son(az.degrees)
         })
     return pd.DataFrame(results)
 
 # ==========================================
-# 3. HÀM VẼ LA BÀN (NAM Ở TRÊN)
+# 3. HÀM VẼ LA BÀN (NAM Ở TRÊN, NHỎ GỌN)
 # ==========================================
 def draw_professional_luopan(df):
     fig = go.Figure()
@@ -120,7 +124,7 @@ def draw_professional_luopan(df):
             r=[0, 180], theta=[border_angle, border_angle], mode='lines', line=dict(color='#BDC3C7', width=1), hoverinfo='skip'
         ))
 
-    # Cấu hình mặt la bàn: rotation=-90 để Nam (180 độ) lên trên cùng
+    # Cấu hình mặt la bàn: rotation=-90 để Nam (180 độ, Ngọ) lên trên cùng
     fig.update_layout(
         polar=dict(
             angularaxis=dict(
@@ -130,7 +134,7 @@ def draw_professional_luopan(df):
             ),
             radialaxis=dict(visible=False, range=[0, 180])
         ),
-        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=30, b=30, l=30, r=30), height=700
+        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=20, b=20, l=20, r=20), height=500
     )
     
     fig.add_trace(go.Scatterpolar(r=[90, 90], theta=[0, 360], mode='lines', line=dict(color='#7F8C8D', width=1.5), hoverinfo='skip'))
@@ -164,20 +168,19 @@ dt_target = local_tz.localize(datetime.datetime.combine(target_date, target_time
 
 df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
-st.markdown("<h2 style='text-align: center; color: #2C3E50; margin-bottom: 30px;'>HỆ THỐNG PHÂN TÍCH TINH TƯỢNG TRẠCH NHẬT</h2>", unsafe_allow_html=True)
-
-tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. ĐỐI XUNG CÁ NHÂN", "III. TRẠCH NHẬT KÍCH HOẠT SƠN HƯỚNG"])
+tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI XUNG", "III. TRẠCH NHẬT KÍCH HOẠT / THÁO DỠ"])
 
 # ----------------- TAB 1 -----------------
 with tab1:
-    st.markdown(f"**ĐỒ HÌNH BẦU TRỜI TẠI THỰC ĐỊA** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
-    fig = draw_professional_luopan(df_target)
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    col1_1, col1_2, col1_3 = st.columns([1, 2, 1]) # Ép biểu đồ vào giữa, nhỏ gọn
+    with col1_2:
+        st.markdown(f"**ĐỒ HÌNH BẦU TRỜI (NAM LÊN TRÊN)** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
+        fig = draw_professional_luopan(df_target)
+        st.plotly_chart(fig, use_container_width=True)
 
 # ----------------- TAB 2 -----------------
 with tab2:
     st.markdown("### ĐỐI CHIẾU LÁ SỐ BẨM SINH & THỜI ĐIỂM DỰ KIẾN")
-    
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         birth_date = st.date_input("Ngày sinh (Dương lịch)", value=datetime.date(1990, 1, 1), min_value=datetime.date(1900, 1, 1))
@@ -200,139 +203,177 @@ with tab2:
         moon_t = df_target_full.loc[df_target_full['Tên'] == 'Thái Âm', 'Chi'].values[0]
         
         st.markdown("---")
-        st.markdown("#### BÁO CÁO PHÂN TÍCH")
         has_error = False
-        
         if check_xung(jup_b, jup_t): 
             st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh dự kiến (Khu {jup_t}) TRỰC XUNG với Mộc Tinh bản mệnh (Khu {jup_b}).")
             has_error = True
-        else:
-            st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh ({jup_t} / {jup_b})")
+        else: st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh ({jup_t} / {jup_b})")
             
         if check_xung(sun_b, sun_t): 
             st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương dự kiến (Khu {sun_t}) TRỰC XUNG với Thái Dương bản mệnh (Khu {sun_b}).")
             has_error = True
-        else:
-            st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương ({sun_t} / {sun_b})")
+        else: st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương ({sun_t} / {sun_b})")
             
         if check_xung(moon_b, moon_t): 
             st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm dự kiến (Khu {moon_t}) TRỰC XUNG với Thái Âm bản mệnh (Khu {moon_b}).")
             has_error = True
-        else:
-            st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm ({moon_t} / {moon_b})")
+        else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm ({moon_t} / {moon_b})")
+            
+        if not has_error: st.markdown("<br>**KẾT LUẬN:** Thời điểm dự kiến hòa hợp với lá số cá nhân, không xuất hiện hiện tượng đối xung.", unsafe_allow_html=True)
 
 # ----------------- TAB 3 -----------------
 with tab3:
-    st.markdown("### TRẠCH NHẬT THEO CẤP ĐỘ KÍCH HOẠT (QUÉT ĐẾN TỪNG PHÚT)")
-    st.markdown("Xác định thời điểm tối ưu để kích hoạt Cát khí (Hội tụ) hoặc Tháo dỡ Hung khí (Vuông góc) tại một Sơn cụ thể.")
+    st.markdown("### THUẬT TOÁN QUÉT CHI TIẾT TỪNG PHÚT")
     
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
-        target_son = st.selectbox("1. Chọn Sơn cần tác động", SƠN_24_ZH)
+        target_son = st.selectbox("1. Chọn Sơn mục tiêu", SƠN_24_ZH)
     with col_t2:
-        action_type = st.selectbox("2. Mục đích", ["Kích Hoạt Đồ Tốt (Cần Lực Triều Mạnh)", "Tháo Dỡ Đồ Xấu (Cần Lực Triều Yếu)"])
+        action_type = st.selectbox("2. Hành động", ["KÍCH HOẠT (Lực Triều Vượng)", "THÁO DỠ (Lực Triều Suy)"])
     with col_t3:
-        if action_type == "Kích Hoạt Đồ Tốt (Cần Lực Triều Mạnh)":
-            level = st.selectbox("3. Cấp độ kích hoạt (Dễ -> Khó)", [
-                "Sơ cấp (Thái Âm đáo Sơn)",
-                "Trung cấp (Thái Âm + 1 sao khác đáo Sơn)",
-                "Cao cấp (Sóc/Vọng Nguyệt đáo Sơn)"
-            ])
-            scan_days = 30 if "Cao cấp" not in level else 180
+        if action_type == "KÍCH HOẠT (Lực Triều Vượng)":
+            level = st.selectbox("3. Cấp độ", ["Sơ cấp (Chỉ Thái Âm)", "Trung cấp (Đa Tinh Đáo Sơn)", "Cao cấp (Sóc/Vọng Nguyệt)"])
+            scan_days = 30 if level != "Cao cấp (Sóc/Vọng Nguyệt)" else 180
         else:
-            level = st.selectbox("3. Điều kiện Tháo dỡ", ["Thượng/Hạ Huyền (Nhật Nguyệt vuông góc 90°)"])
+            st.info("Chỉ quét ngày Thượng/Hạ Huyền (Nhật Nguyệt 90°)")
             scan_days = 30
             
-    st.caption(f"*Hệ thống sẽ quét tự động trong **{scan_days} ngày** tính từ ngày dự kiến ở Menu bên trái.*")
-    
     if st.button("Thực Thi Quét Phân Tích", type="primary"):
-        st.markdown("> Đang chạy thuật toán quét chi tiết (Two-pass algorithm)...")
+        st.markdown(f"> Đang áp dụng thuật toán Two-Pass Filtering quét trong {scan_days} ngày...")
         progress = st.progress(0)
         
         start_date_scan = dt_target
         results = []
+        scan_bodies = active_bodies if len(active_bodies) >= 2 else list(CELESTIAL_BODIES.keys())
         
-        # --- LOGIC THÁO DỠ (NHẬT NGUYỆT VUÔNG GÓC 90 ĐỘ) ---
-        if action_type == "Tháo Dỡ Đồ Xấu (Cần Lực Triều Yếu)":
+        # --- LOGIC THÁO DỠ ---
+        if action_type == "THÁO DỠ (Lực Triều Suy)":
             for d in range(scan_days):
                 progress.progress(d / scan_days)
                 check_day = start_date_scan + datetime.timedelta(days=d)
                 
-                # Quét thô mỗi 6 tiếng để tìm ngày Thượng/Hạ Huyền (Vuông góc ~ 6 sơn)
-                df_check = calculate_positions(check_day, lat, lon, ['Thái Dương', 'Thái Âm'])
-                sun_s = df_check.loc[0, 'Sơn']
-                moon_s = df_check.loc[1, 'Sơn']
+                # Quét thô tìm ngày vuông góc (sai số 5 độ trên Hoàng đạo)
+                df_rough = calculate_positions(check_day.replace(hour=12, minute=0), lat, lon, ['Thái Dương', 'Thái Âm'])
+                diff_ecl = get_angular_diff(df_rough.loc[0, 'Hoàng Đạo (°)'], df_rough.loc[1, 'Hoàng Đạo (°)'])
                 
-                # Tính khoảng cách Sơn (Vuông góc = cách nhau 6 sơn)
-                diff = abs(SƠN_24_ZH.index(sun_s) - SƠN_24_ZH.index(moon_s))
-                if diff in [5, 6, 7, 17, 18, 19]: # Cho phép biên độ sai số nhẹ của 90 độ
+                if 80 <= diff_ecl <= 100: # Xung quanh 90 độ (Thượng/Hạ Huyền)
+                    best_minute = None
+                    best_diff = 999
                     
-                    # Quét tinh (Từng 15 phút) trong ngày đó
-                    for m in range(0, 24*60, 15):
+                    # Quét tinh từng phút tìm lúc 90 độ chuẩn xác nhất
+                    for m in range(0, 24*60, 5):
                         exact_time = check_day.replace(hour=0, minute=0) + datetime.timedelta(minutes=m)
                         df_exact = calculate_positions(exact_time, lat, lon, ['Thái Dương', 'Thái Âm'])
-                        s_exact = df_exact.loc[0, 'Sơn']
-                        m_exact = df_exact.loc[1, 'Sơn']
+                        current_diff = abs(90 - get_angular_diff(df_exact.loc[0, 'Hoàng Đạo (°)'], df_exact.loc[1, 'Hoàng Đạo (°)']))
                         
-                        # Điều kiện: Vuông góc VÀ cả 2 sao đều KHÔNG nằm ở Sơn cần tháo dỡ
-                        diff_exact = abs(SƠN_24_ZH.index(s_exact) - SƠN_24_ZH.index(m_exact))
-                        if diff_exact in [6, 18] and s_exact != target_son and m_exact != target_son:
-                            results.append({
-                                "Ngày": exact_time.strftime("%d/%m/%Y"),
-                                "Giờ Tuyệt Đối": exact_time.strftime("%H:%M"),
-                                "Tình Trạng": f"Nhật ở {s_exact}, Nguyệt ở {m_exact} (An toàn tháo {target_son})"
-                            })
-                            break # Tìm được 1 khung giờ trong ngày là đủ
+                        if current_diff < best_diff:
+                            best_diff = current_diff
+                            best_minute = exact_time
                             
-        # --- LOGIC KÍCH HOẠT ĐỒ TỐT ---
+                    # Kiểm tra an toàn: Tại phút chuẩn 90 độ đó, Nhật & Nguyệt có nằm ngoài Sơn tháo dỡ không?
+                    df_final = calculate_positions(best_minute, lat, lon, ['Thái Dương', 'Thái Âm'])
+                    sun_s = df_final.loc[0, 'Sơn']
+                    moon_s = df_final.loc[1, 'Sơn']
+                    
+                    if sun_s != target_son and moon_s != target_son:
+                        results.append({
+                            "Ngày": best_minute.strftime("%d/%m/%Y"),
+                            "Giờ Cực Đỉnh": best_minute.strftime("%H:%M"),
+                            "Hiện Tượng": f"Vuông góc chuẩn (Sai số {round(best_diff, 2)}°)",
+                            "Ghi Chú": f"An toàn. Thái Dương ở {sun_s}, Thái Âm ở {moon_s}",
+                            "Các sao khác tại Sơn": "Không xét"
+                        })
+                        
+        # --- LOGIC KÍCH HOẠT ---
         else:
-            if level == "Sơ cấp (Thái Âm đáo Sơn)":
-                for d in range(7): # Sơ cấp dễ tìm, chỉ cần quét 7 ngày
-                    progress.progress(d / 7)
-                    for m in range(0, 24*60, 10): # Quét mỗi 10 phút
-                        exact_time = start_date_scan + datetime.timedelta(days=d, minutes=m)
-                        df_exact = calculate_positions(exact_time, lat, lon, ['Thái Âm'])
-                        if df_exact.loc[0, 'Sơn'] == target_son:
-                            results.append({"Ngày": exact_time.strftime("%d/%m/%Y"), "Giờ Kích Hoạt": exact_time.strftime("%H:%M"), "Hiện Tượng": f"Thái Âm nhập Sơn {target_son}"})
-                            break # Chuyển sang ngày tiếp theo
-                            
-            elif level == "Trung cấp (Thái Âm + 1 sao khác đáo Sơn)":
-                for d in range(scan_days):
-                    progress.progress(d / scan_days)
-                    for m in range(0, 24*60, 30):
-                        exact_time = start_date_scan + datetime.timedelta(days=d, minutes=m)
-                        df_exact = calculate_positions(exact_time, lat, lon, ['Thái Âm', 'Mộc Tinh', 'Kim Tinh', 'Thủy Tinh', 'Hỏa Tinh', 'Thổ Tinh'])
+            for d in range(scan_days):
+                progress.progress(d / scan_days)
+                check_day = start_date_scan + datetime.timedelta(days=d)
+                
+                if level == "Cao cấp (Sóc/Vọng Nguyệt)":
+                    df_rough = calculate_positions(check_day.replace(hour=12, minute=0), lat, lon, ['Thái Dương', 'Thái Âm'])
+                    diff_ecl = get_angular_diff(df_rough.loc[0, 'Hoàng Đạo (°)'], df_rough.loc[1, 'Hoàng Đạo (°)'])
+                    # Bỏ qua nếu không phải mùng 1 (diff~0) hoặc rằm (diff~180)
+                    if not (diff_ecl < 10 or diff_ecl > 170): continue
+
+                # Quét thô mỗi 1 tiếng xem Thái Âm có vào Sơn mục tiêu không
+                moon_entered_hours = []
+                for h in range(24):
+                    rough_time = check_day.replace(hour=h, minute=0)
+                    df_rough = calculate_positions(rough_time, lat, lon, ['Thái Âm'])
+                    if df_rough.loc[0, 'Sơn'] == target_son:
+                        moon_entered_hours.append(h)
+                
+                # Nếu có, quét tinh từng phút trong các giờ đó
+                if moon_entered_hours:
+                    start_h = min(moon_entered_hours)
+                    end_h = max(moon_entered_hours)
+                    
+                    best_events = []
+                    
+                    for m in range(start_h * 60, (end_h + 1) * 60):
+                        exact_time = check_day.replace(hour=0, minute=0) + datetime.timedelta(minutes=m)
+                        df_exact = calculate_positions(exact_time, lat, lon, scan_bodies)
                         
+                        moon_row = df_exact[df_exact['Tên'] == 'Thái Âm'].iloc[0]
+                        if moon_row['Sơn'] != target_son: continue
+                        
+                        moon_az = moon_row['Azimuth (°)']
                         bodies_in_son = df_exact[df_exact['Sơn'] == target_son]['Tên'].tolist()
-                        if 'Thái Âm' in bodies_in_son and len(bodies_in_son) >= 2:
-                            results.append({"Ngày": exact_time.strftime("%d/%m/%Y"), "Giờ Kích Hoạt": exact_time.strftime("%H:%M"), "Hiện Tượng": f"Hội tụ tại {target_son}: {', '.join(bodies_in_son)}"})
-                            break
+                        other_bodies = [b for b in bodies_in_son if b != 'Thái Âm']
+                        
+                        # Xử lý theo từng cấp độ
+                        if level == "Sơ cấp (Chỉ Thái Âm)":
+                            # Tìm phút Thái Âm vào chính giữa Sơn (Góc trung tâm = Index * 15)
+                            center_az = SƠN_24_ZH.index(target_son) * 15
+                            diff_to_center = get_angular_diff(moon_az, center_az)
+                            best_events.append((diff_to_center, exact_time, "Thái Âm chính trung Sơn", other_bodies))
                             
-            elif level == "Cao cấp (Sóc/Vọng Nguyệt đáo Sơn)":
-                for d in range(scan_days):
-                    progress.progress(d / scan_days)
-                    check_day = start_date_scan + datetime.timedelta(days=d)
-                    df_check = calculate_positions(check_day, lat, lon, ['Thái Dương', 'Thái Âm'])
-                    
-                    sun_chi = df_check.loc[0, 'Chi']
-                    moon_chi = df_check.loc[1, 'Chi']
-                    
-                    # Tìm ngày Sóc (Cùng Chi) hoặc Vọng (Xung Chi)
-                    if sun_chi == moon_chi or abs(DI_CHI_ZH.index(sun_chi) - DI_CHI_ZH.index(moon_chi)) == 6:
-                        for m in range(0, 24*60, 15):
-                            exact_time = check_day.replace(hour=0, minute=0) + datetime.timedelta(minutes=m)
-                            df_exact = calculate_positions(exact_time, lat, lon, ['Thái Dương', 'Thái Âm'])
+                        elif level == "Trung cấp (Đa Tinh Đáo Sơn)" and len(other_bodies) > 0:
+                            # 1. Trùng khớp từng sao
+                            for ob in other_bodies:
+                                ob_az = df_exact[df_exact['Tên'] == ob].iloc[0]['Azimuth (°)']
+                                diff = get_angular_diff(moon_az, ob_az)
+                                best_events.append((diff, exact_time, f"Trùng khớp {ob}", other_bodies))
                             
-                            # Kiểm tra xem lúc đó Nhật hoặc Nguyệt có nằm đúng Sơn mục tiêu không
-                            if df_exact.loc[0, 'Sơn'] == target_son or df_exact.loc[1, 'Sơn'] == target_son:
-                                phase = "Sóc Nguyệt" if sun_chi == moon_chi else "Vọng Nguyệt"
-                                results.append({"Ngày": exact_time.strftime("%d/%m/%Y"), "Giờ Kích Hoạt": exact_time.strftime("%H:%M"), "Hiện Tượng": f"{phase} đáo Sơn {target_son}"})
-                                break
+                            # 2. Trọng tâm phân tán (Sum sai số)
+                            if len(other_bodies) > 1:
+                                sum_diff = sum([get_angular_diff(moon_az, df_exact[df_exact['Tên'] == b].iloc[0]['Azimuth (°)']) for b in other_bodies])
+                                best_events.append((sum_diff, exact_time, "Trọng tâm Đa tinh (Trung tâm năng lượng)", other_bodies))
+                                
+                        elif level == "Cao cấp (Sóc/Vọng Nguyệt)":
+                            sun_row = df_exact[df_exact['Tên'] == 'Thái Dương'].iloc[0]
+                            sun_az = sun_row['Azimuth (°)']
+                            sun_s = sun_row['Sơn']
+                            
+                            # Điều kiện Sóc (Nhật Nguyệt cùng Sơn)
+                            if sun_s == target_son:
+                                diff = get_angular_diff(moon_az, sun_az)
+                                best_events.append((diff, exact_time, "Sóc Nguyệt: Nhật Nguyệt trùng khớp", other_bodies))
+                            # Điều kiện Vọng (Nhật đối diện Nguyệt)
+                            elif abs(SƠN_24_ZH.index(sun_s) - SƠN_24_ZH.index(target_son)) == 12:
+                                diff_180 = abs(180 - get_angular_diff(moon_az, sun_az))
+                                best_events.append((diff_180, exact_time, "Vọng Nguyệt: Nhật Nguyệt đối đỉnh chuẩn", other_bodies))
+
+                    # Lọc ra các kết quả tốt nhất (Sai số nhỏ nhất) trong ngày đó để hiển thị
+                    if best_events:
+                        # Gom nhóm theo "Hiện Tượng" và tìm Min sai số
+                        df_events = pd.DataFrame(best_events, columns=['Diff', 'Time', 'Type', 'Others'])
+                        best_idx = df_events.groupby('Type')['Diff'].idxmin()
+                        for idx in best_idx:
+                            row = df_events.loc[idx]
+                            results.append({
+                                "Ngày": row['Time'].strftime("%d/%m/%Y"),
+                                "Giờ Cực Đỉnh": row['Time'].strftime("%H:%M"),
+                                "Hiện Tượng": row['Type'],
+                                "Ghi Chú": f"Sai số góc thấp nhất",
+                                "Các sao khác tại Sơn": ", ".join(row['Others']) if row['Others'] else "Không có"
+                            })
 
         progress.progress(100)
         st.markdown("---")
         if results:
-            st.markdown(f"**TÌM THẤY {len(results)} THỜI ĐIỂM TỐI ƯU:**")
+            st.markdown(f"**TÌM THẤY CÁC THỜI ĐIỂM TỐI ƯU (ĐÃ TÌM ĐỈNH TỪNG PHÚT):**")
             st.dataframe(pd.DataFrame(results), use_container_width=True)
         else:
-            st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện khó này trong khung thời gian quét. Vui lòng hạ cấp độ kích hoạt hoặc mở rộng ngày dự kiến.")
+            st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện trong khung thời gian quét.")
