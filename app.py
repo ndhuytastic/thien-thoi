@@ -134,7 +134,7 @@ def draw_professional_luopan(df):
 # ==========================================
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
-st.sidebar.markdown("### CÀI ĐẶT THÔNG SỐ")
+st.sidebar.markdown("### THÔNG SỐ")
 lat = st.sidebar.number_input("Vĩ độ (Latitude)", value=21.0285, format="%.4f")
 lon = st.sidebar.number_input("Kinh độ (Longitude)", value=105.8542, format="%.4f")
 
@@ -162,7 +162,7 @@ tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI X
 with tab1:
     col1_1, col1_2, col1_3 = st.columns([1, 2, 1])
     with col1_2:
-        st.markdown(f"**ĐỒ HÌNH** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
+        st.markdown(f"**ĐỒ HÌNH THIÊN THỂ** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
         fig = draw_professional_luopan(df_target)
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True}) # Bật thanh công cụ để có nút Fullscreen
 
@@ -171,7 +171,7 @@ with tab2:
     st.markdown("### ĐỐI CHIẾU LÁ SỐ & THỜI ĐIỂM DỰ KIẾN")
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        birth_date = st.date_input("Ngày sinh (Dương lịch)", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1))
+        birth_date = st.date_input("Ngày sinh", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1))
     with col_b2:
         birth_time = st.time_input("Giờ sinh", value=datetime.time(8, 15))
         
@@ -219,7 +219,7 @@ with tab3:
         action_type = st.selectbox("2. Mục đích", ["KÍCH HOẠT (Lực Triều Vượng)", "THÁO DỠ (Lực Triều Suy)"])
     with col_t3:
         if action_type == "KÍCH HOẠT (Lực Triều Vượng)":
-            level = st.selectbox("3. Cấp độ", ["Sơ cấp (Chỉ Thái Âm)", "Trung cấp (Đa Tinh Đáo Sơn)", "Cao cấp (Sóc/Vọng Nguyệt)"])
+            level = st.selectbox("3. Cấp độ", ["Thái Âm", "Đa Tinh Đáo Sơn", "Sóc/Vọng Nguyệt"])
             scan_days = 30 if level != "Cao cấp (Sóc/Vọng Nguyệt)" else 180
         else:
             st.info("Chỉ quét ngày Thượng/Hạ Huyền (Nhật Nguyệt 90°)")
@@ -326,7 +326,7 @@ with tab3:
                 if len(valid_mins) > 0:
                     best_events_today = []
                     
-                    if level == "Thái Âm Đáo Sơn":
+                    if level == "Thái Âm":
                         # Tìm phút góc Trăng gần tâm Sơn nhất
                         diffs = get_angular_diff_vec(moon_az_arr[valid_mins], son_center_deg)
                         best_local_idx = np.argmin(diffs)
@@ -354,14 +354,14 @@ with tab3:
                                 exact_time = datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60))
                                 # Tính sai số Trọng tâm (Sum khoảng cách từ Trăng đến các sao)
                                 sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
-                                best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh (Trung tâm năng lượng)", ", ".join(bodies_in_son)))
+                                best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
                                 
                                 # Tính sai số Trùng khớp từng cặp
                                 for b in bodies_in_son:
                                     diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
                                     best_events_today.append((diff_pair, exact_time, f"Thái Âm trùng khít {b}", ", ".join(bodies_in_son)))
 
-                    elif level == "Cao cấp (Sóc/Vọng Nguyệt)" and is_soc_vong:
+                    elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
                         sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
                         # Duyệt các phút Trăng ở trong Sơn
                         for m in valid_mins:
