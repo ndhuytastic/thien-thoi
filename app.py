@@ -263,7 +263,7 @@ with tab2:
     
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b1:
-        birth_date = st.date_input("Ngày sinh", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1))
+        birth_date = st.date_input("Ngày sinh", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
     with col_b2:
         birth_time = st.time_input("Giờ sinh", value=datetime.time(8, 15))
     with col_b3:
