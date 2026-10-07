@@ -138,9 +138,10 @@ def draw_professional_luopan(df):
 def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
     fig = go.Figure()
     
-    # 0 độ = Mão (Đông), 90 độ = Ngọ (Nam - Lên đỉnh)
-    # Tương ứng: Mão(0), Thìn(30), Tỵ(60), Ngọ(90), Mùi(120), Thân(150), Dậu(180), Tuất(210), Hợi(240), Tý(270), Sửu(300), Dần(330)
-    tickvals = [270, 300, 330, 0, 30, 60, 90, 120, 150, 180, 210, 240]
+    # 0 độ là Mão. Để Mão bên TRÁI, Dậu bên PHẢI, Ngọ ở TRÊN, Tý ở DƯỚI:
+    # Ta dùng danh sách 12 Chi theo đúng thứ tự góc từ 0 -> 330
+    tickvals_new = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330]
+    ticktext_new = ["卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥", "子", "丑", "寅"]
     
     # Vẽ các đường ranh giới 12 cung (Mỗi cung 30 độ, ranh giới nằm ở 15, 45, 75...)
     for i in range(12):
@@ -171,8 +172,8 @@ def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
 
     fig.update_layout(
         polar=dict(
-            # Counterclockwise, rotation=0 để 0 độ ở bên phải, 90 độ (Ngọ) ở trên cùng
-            angularaxis=dict(direction="counterclockwise", rotation=0, tickmode="array", tickvals=tickvals, ticktext=DI_CHI_ZH, showline=False, showgrid=False),
+            # SỬA CHIỀU XOAY: clockwise (theo kim đồng hồ) và rotation=180 (đưa góc 0° sang bên trái)
+            angularaxis=dict(direction="clockwise", rotation=180, tickmode="array", tickvals=tickvals_new, ticktext=ticktext_new, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 100])
         ),
         showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=20, b=20, l=20, r=20), height=500
@@ -186,30 +187,76 @@ def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
 # ==========================================
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
-st.sidebar.markdown("### THÔNG SỐ")
+from geopy.geocoders import Nominatim
+from timezonefinder import TimezoneFinder
 
-# TÍNH NĂNG TÌM KIẾM ĐỊA CHỈ TỰ ĐỘNG
-address_input = st.sidebar.text_input("Tìm kiếm địa chỉ (VD: Hà Nội):")
-if st.sidebar.button("Tìm Tọa Độ"):
-    geolocator = Nominatim(user_agent="thien_thoi_app_vn")
+# Khởi tạo các công cụ địa lý
+geolocator = Nominatim(user_agent="thien_thoi_app_vn")
+tf = TimezoneFinder()
+
+# Khởi tạo Session State cho địa lý
+if 'lat' not in st.session_state: st.session_state.lat = 21.0285
+if 'lon' not in st.session_state: st.session_state.lon = 105.8542
+if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
+if 'search_results' not in st.session_state: st.session_state.search_results = None
+
+st.sidebar.markdown("### THÔNG SỐ VỊ TRÍ")
+
+# 1. TÍNH NĂNG TÌM KIẾM ĐỊA CHỈ NÂNG CAO
+address_input = st.sidebar.text_input("Địa chỉ:", placeholder="Gõ địa chỉ và ấn Enter...")
+
+col_btn1, col_btn2 = st.sidebar.columns(2)
+if col_btn1.button("Tìm", type="primary"):
     try:
-        location = geolocator.geocode(address_input)
-        if location:
-            st.session_state.lat = location.latitude
-            st.session_state.lon = location.longitude
-            st.sidebar.success(f"Đã tìm thấy: {location.address.split(',')[0]}")
+        # Lấy danh sách tối đa 5 kết quả gợi ý
+        locations = geolocator.geocode(address_input, exactly_one=False, limit=5)
+        if locations:
+            # Lưu danh sách kết quả vào Session State
+            st.session_state.search_results = {loc.address: (loc.latitude, loc.longitude) for loc in locations}
         else:
             st.sidebar.error("Không tìm thấy địa chỉ.")
+            st.session_state.search_results = None
     except Exception as e:
         st.sidebar.error("Lỗi kết nối bản đồ.")
 
+if col_btn2.button("Xóa"):
+    st.session_state.search_results = None
+
+# Nếu có kết quả tìm kiếm, hiển thị Dropdown để người dùng CHỌN
+if st.session_state.search_results:
+    selected_address = st.sidebar.selectbox("Chọn địa chỉ chính xác:", list(st.session_state.search_results.keys()))
+    
+    if st.sidebar.button("Chốt Tọa Độ"):
+        # Lấy tọa độ từ địa chỉ đã chọn
+        sel_lat, sel_lon = st.session_state.search_results[selected_address]
+        st.session_state.lat = sel_lat
+        st.session_state.lon = sel_lon
+        
+        # Tự động tìm Múi Giờ (Timezone) dựa trên Tọa độ
+        auto_tz = tf.timezone_at(lng=sel_lon, lat=sel_lat)
+        if auto_tz:
+            st.session_state.tz_str = auto_tz
+            
+        st.sidebar.success(f"Đã cập nhật Tọa độ & Múi giờ!")
+        st.session_state.search_results = None # Ẩn menu sau khi chọn xong
+        st.rerun()
+
+st.sidebar.markdown("---")
+# Hiển thị Tọa độ và Múi giờ để người dùng tinh chỉnh thủ công nếu cần
 lat = st.sidebar.number_input("Vĩ độ (Latitude)", value=st.session_state.lat, format="%.4f")
 lon = st.sidebar.number_input("Kinh độ (Longitude)", value=st.session_state.lon, format="%.4f")
+# Danh sách tất cả các múi giờ chuẩn
+all_timezones = pytz.all_timezones
+tz_index = all_timezones.index(st.session_state.tz_str) if st.session_state.tz_str in all_timezones else all_timezones.index('UTC')
+selected_tz = st.sidebar.selectbox("Múi giờ (Timezone)", all_timezones, index=tz_index)
+
 st.session_state.lat = lat
 st.session_state.lon = lon
+st.session_state.tz_str = selected_tz
 
-st.session_state.target_date = st.sidebar.date_input("Ngày dự kiến", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
-st.session_state.target_time = st.sidebar.time_input("Giờ dự kiến", value=st.session_state.target_time)
+st.sidebar.markdown("### THỜI GIAN DỰ KIẾN")
+st.session_state.target_date = st.sidebar.date_input("Ngày", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
+st.session_state.target_time = st.sidebar.time_input("Giờ", value=st.session_state.target_time)
 
 st.sidebar.markdown("**Hiển thị Thiên thể**")
 col_cb1, col_cb2 = st.sidebar.columns(2)
@@ -222,7 +269,10 @@ for i, (name, info) in enumerate(CELESTIAL_BODIES.items()):
     else:
         if col_cb2.checkbox(f"{info['char']} {name}", value=is_checked): active_bodies.append(name)
 
+# Áp dụng múi giờ đã chọn để tính toán
+local_tz = pytz.timezone(st.session_state.tz_str)
 dt_target = local_tz.localize(datetime.datetime.combine(st.session_state.target_date, st.session_state.target_time))
+
 df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
 tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI XUNG", "III. TRẠCH NHẬT KÍCH HOẠT / THÁO DỠ"])
