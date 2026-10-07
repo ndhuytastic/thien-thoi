@@ -4,6 +4,7 @@ import pytz
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+from geopy.geocoders import Nominatim
 
 # ==========================================
 # CẤU HÌNH TRANG & STATE
@@ -34,6 +35,8 @@ now = datetime.datetime.now(local_tz)
 if 'target_date' not in st.session_state: st.session_state.target_date = now.date()
 if 'target_time' not in st.session_state: st.session_state.target_time = now.time()
 if 'scan_results' not in st.session_state: st.session_state.scan_results = None 
+if 'lat' not in st.session_state: st.session_state.lat = 21.0285
+if 'lon' not in st.session_state: st.session_state.lon = 105.8542
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE
@@ -134,34 +137,42 @@ def draw_professional_luopan(df):
 
 def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
     fig = go.Figure()
-    tickvals = [(i * 30 + 255) % 360 for i in range(12)] 
     
+    # 0 độ = Mão (Đông), 90 độ = Ngọ (Nam - Lên đỉnh)
+    # Tương ứng: Mão(0), Thìn(30), Tỵ(60), Ngọ(90), Mùi(120), Thân(150), Dậu(180), Tuất(210), Hợi(240), Tý(270), Sửu(300), Dần(330)
+    tickvals = [270, 300, 330, 0, 30, 60, 90, 120, 150, 180, 210, 240]
+    
+    # Vẽ các đường ranh giới 12 cung (Mỗi cung 30 độ, ranh giới nằm ở 15, 45, 75...)
     for i in range(12):
         border_angle = i * 30 + 15
-        fig.add_trace(go.Scatterpolar(r=[0, 100], theta=[border_angle, border_angle], mode='lines', line=dict(color='#E5E7E9', width=1, dash='dash'), hoverinfo='skip'))
+        fig.add_trace(go.Scatterpolar(r=[0, 100], theta=[border_angle, border_angle], mode='lines', line=dict(color='#E5E7E9', width=1, dash='solid'), hoverinfo='skip'))
 
+    # Sao bẩm sinh (Vòng trong)
     for idx, row in df_birth.iterrows():
         fig.add_trace(go.Scatterpolar(
             r=[50], theta=[row['Độ Hoàng Đạo']], mode='markers+text',
             marker=dict(size=10, color='#BDC3C7', symbol='circle'), 
             text=f"{row['Ký Hiệu']}", textposition="top center", textfont=dict(size=12, color="#7F8C8D"),
-            name=f"{row['Tên']} (Sinh)", hoverinfo="text", hovertext=f"BẢM SINH: {row['Tên']}<br>Cung: {row['Khu Vực Hoàng Đạo']}<br>Độ: {row['Độ Hoàng Đạo']}°"
+            name=f"{row['Tên']} (Sinh)", hoverinfo="text", hovertext=f"BẨM SINH: {row['Tên']}<br>Cung: {row['Khu Vực Hoàng Đạo']}<br>Độ: {row['Độ Hoàng Đạo']}°"
         ))
 
+    # Sao hiện tại/dự kiến (Vòng ngoài)
     for idx, row in df_target.iterrows():
         fig.add_trace(go.Scatterpolar(
             r=[80], theta=[row['Độ Hoàng Đạo']], mode='markers+text',
             marker=dict(size=12, color=row['Màu'], symbol='circle', line=dict(width=1, color='white')),
             text=f"<b>{row['Ký Hiệu']}</b>", textposition="bottom center", textfont=dict(size=14, color="#000000"),
-            name=f"{row['Tên']} (Hiện)", hoverinfo="text", hovertext=f"HIỆN TẠI: {row['Tên']}<br>Cung: {row['Khu Vực Hoàng Đạo']}<br>Độ: {row['Độ Hoàng Đạo']}°"
+            name=f"{row['Tên']} (Hiện)", hoverinfo="text", hovertext=f"DỰ KIẾN: {row['Tên']}<br>Cung: {row['Khu Vực Hoàng Đạo']}<br>Độ: {row['Độ Hoàng Đạo']}°"
         ))
 
+    # Vẽ tia Laser đỏ khi Xung
     for clash in clash_pairs:
         fig.add_trace(go.Scatterpolar(r=[50, 80], theta=[clash['birth_deg'], clash['target_deg']], mode='lines', line=dict(color='red', width=2), hoverinfo='skip'))
 
     fig.update_layout(
         polar=dict(
-            angularaxis=dict(direction="counterclockwise", rotation=180, tickmode="array", tickvals=tickvals, ticktext=DI_CHI_ZH, showline=False, showgrid=False),
+            # Counterclockwise, rotation=0 để 0 độ ở bên phải, 90 độ (Ngọ) ở trên cùng
+            angularaxis=dict(direction="counterclockwise", rotation=0, tickmode="array", tickvals=tickvals, ticktext=DI_CHI_ZH, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 100])
         ),
         showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=20, b=20, l=20, r=20), height=500
@@ -176,11 +187,29 @@ def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
 st.sidebar.markdown("### THÔNG SỐ")
-lat = st.sidebar.number_input("Vĩ độ", value=21.0285, format="%.4f")
-lon = st.sidebar.number_input("Kinh độ", value=105.8542, format="%.4f")
 
-st.session_state.target_date = st.sidebar.date_input("Ngày", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
-st.session_state.target_time = st.sidebar.time_input("Giờ", value=st.session_state.target_time)
+# TÍNH NĂNG TÌM KIẾM ĐỊA CHỈ TỰ ĐỘNG
+address_input = st.sidebar.text_input("Tìm kiếm địa chỉ (VD: Hà Nội):")
+if st.sidebar.button("Tìm Tọa Độ"):
+    geolocator = Nominatim(user_agent="thien_thoi_app_vn")
+    try:
+        location = geolocator.geocode(address_input)
+        if location:
+            st.session_state.lat = location.latitude
+            st.session_state.lon = location.longitude
+            st.sidebar.success(f"Đã tìm thấy: {location.address.split(',')[0]}")
+        else:
+            st.sidebar.error("Không tìm thấy địa chỉ.")
+    except Exception as e:
+        st.sidebar.error("Lỗi kết nối bản đồ.")
+
+lat = st.sidebar.number_input("Vĩ độ (Latitude)", value=st.session_state.lat, format="%.4f")
+lon = st.sidebar.number_input("Kinh độ (Longitude)", value=st.session_state.lon, format="%.4f")
+st.session_state.lat = lat
+st.session_state.lon = lon
+
+st.session_state.target_date = st.sidebar.date_input("Ngày dự kiến", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
+st.session_state.target_time = st.sidebar.time_input("Giờ dự kiến", value=st.session_state.target_time)
 
 st.sidebar.markdown("**Hiển thị Thiên thể**")
 col_cb1, col_cb2 = st.sidebar.columns(2)
@@ -208,8 +237,6 @@ with tab1:
 
 # ----------------- TAB 2 -----------------
 with tab2:
-    st.markdown("### LÁ SỐ BẨM SINH & ĐỐI CHIẾU XUNG KHẮC")
-    
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         birth_date = st.date_input("Ngày sinh", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1))
@@ -236,38 +263,30 @@ with tab2:
 
     col2_chart, col2_info = st.columns([1.5, 1])
     with col2_chart:
-        st.markdown(f"**ĐỒ HÌNH HOÀNG ĐẠO (ĐỐI XUNG)**")
-        st.caption("*Vòng trong (Xám): Bẩm sinh. Vòng ngoài (Màu): Dự kiến.*")
+        st.markdown("#### ĐỒ HÌNH HOÀNG ĐẠO")
         fig2 = draw_ecliptic_chart(df_birth_3, df_target_3, clash_pairs)
         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': True})
     
     with col2_info:
         st.markdown("#### BÁO CÁO PHÂN TÍCH")
-        st.markdown("*(Định dạng: Dự kiến / Bẩm sinh)*")
-        has_error = False
         
         jup_b = df_birth_3.loc[df_birth_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
         jup_t = df_target_3.loc[df_target_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
         if check_xung(jup_b, jup_t): 
-            st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh (Khu {jup_t}) TRỰC XUNG với bản mệnh (Khu {jup_b}).")
-            has_error = True
-        else: st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh ({jup_t} / {jup_b})")
+            st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh (Bẩm sinh: {jup_b} - Dự kiến: {jup_t})")
+        else: st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh (Bẩm sinh: {jup_b} - Dự kiến: {jup_t})")
             
         sun_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
         sun_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
         if check_xung(sun_b, sun_t): 
-            st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương (Khu {sun_t}) TRỰC XUNG với bản mệnh (Khu {sun_b}).")
-            has_error = True
-        else: st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương ({sun_t} / {sun_b})")
+            st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương (Bẩm sinh: {sun_b} - Dự kiến: {sun_t})")
+        else: st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương (Bẩm sinh: {sun_b} - Dự kiến: {sun_t})")
             
         moon_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
         moon_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
         if check_xung(moon_b, moon_t): 
-            st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm (Khu {moon_t}) TRỰC XUNG với bản mệnh (Khu {moon_b}).")
-            has_error = True
-        else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm ({moon_t} / {moon_b})")
-            
-        if not has_error: st.markdown("<br>**KẾT LUẬN:** Thời điểm dự kiến hòa hợp với lá số cá nhân.", unsafe_allow_html=True)
+            st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm (Bẩm sinh: {moon_b} - Dự kiến: {moon_t})")
+        else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm (Bẩm sinh: {moon_b} - Dự kiến: {moon_t})")
 
 # ----------------- TAB 3 -----------------
 with tab3:
@@ -460,16 +479,12 @@ with tab3:
             
             if st.button("Vẽ Đồ Hình", type="primary"):
                 selected_time = options[selected_option]
-                # Lưu vào state để không mất kết quả quét
-                st.session_state.target_date = selected_time.date()
-                st.session_state.target_time = selected_time.time()
-                
-                # Vẽ trực tiếp đồ hình dưới nút bấm
+                # Thêm key ngẫu nhiên vào biểu đồ Plotly để khắc phục lỗi StreamlitDuplicateElementId
                 st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA CHI TIẾT TẠI: {selected_time.strftime('%H:%M %d/%m/%Y')}**")
                 df_preview = calculate_positions(selected_time, lat, lon, active_bodies)
                 col_p1, col_p2, col_p3 = st.columns([1,2,1])
                 with col_p2:
                     fig_preview = draw_professional_luopan(df_preview)
-                    st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': True})
+                    st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': True}, key=f"preview_{selected_time.timestamp()}")
         else:
             st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện khó này trong khung thời gian quét.")
