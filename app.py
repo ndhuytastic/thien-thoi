@@ -28,12 +28,12 @@ except ImportError:
     st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT).")
     st.stop()
 
-# Khởi tạo Session State để lưu trữ dữ liệu không bị mất khi chuyển Tab
+# Khởi tạo Session State 
 local_tz = pytz.timezone('Asia/Ho_Chi_Minh')
 now = datetime.datetime.now(local_tz)
 if 'target_date' not in st.session_state: st.session_state.target_date = now.date()
 if 'target_time' not in st.session_state: st.session_state.target_time = now.time()
-if 'scan_results' not in st.session_state: st.session_state.scan_results = None # Lưu kết quả quét
+if 'scan_results' not in st.session_state: st.session_state.scan_results = None 
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE
@@ -64,14 +64,15 @@ DI_CHI_ZH = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉
 SƠN_24_ZH = ["子", "癸", "丑", "艮", "寅", "甲", "卯", "乙", "辰", "巽", "巳", "丙", 
              "午", "丁", "未", "坤", "申", "庚", "酉", "辛", "戌", "乾", "亥", "壬"]
 
-def get_di_chi(degree): return DI_CHI_ZH[int(((degree + 15) % 360) / 30)]
 def get_24_son(azimuth): return SƠN_24_ZH[int(((azimuth + 7.5) % 360) / 15)]
+def get_di_chi_hoang_dao(degree): return DI_CHI_ZH[int(((degree + 105) % 360) / 30)]
+
 def get_angular_diff_vec(a1, a2): 
     diff = np.abs(a1 - a2)
     return np.minimum(diff, 360 - diff)
 
 # ==========================================
-# 2. HÀM TÍNH TOÁN
+# 2. HÀM TÍNH TOÁN CƠ BẢN
 # ==========================================
 def calculate_positions(dt, lat, lon, active_bodies):
     time = ts.from_datetime(dt)
@@ -91,14 +92,13 @@ def calculate_positions(dt, lat, lon, active_bodies):
         alt, az, _ = location.at(time).observe(body_node).apparent().altaz()
         results.append({
             "Tên": name, "Ký Hiệu": info['char'], "Màu": info['color'],
-            "Hoàng Đạo (°)": round(lon_ecl.degrees, 4), "Chi": get_di_chi(lon_ecl.degrees),
-            "Azimuth (°)": round(az.degrees, 4), "Altitude (°)": round(alt.degrees, 4),
-            "Sơn": get_24_son(az.degrees)
+            "Độ Hoàng Đạo": round(lon_ecl.degrees, 2), "Khu Vực Hoàng Đạo": get_di_chi_hoang_dao(lon_ecl.degrees),
+            "Azimuth (°)": round(az.degrees, 2), "Altitude (°)": round(alt.degrees, 2), "Sơn Thực Địa": get_24_son(az.degrees)
         })
     return pd.DataFrame(results)
 
 # ==========================================
-# 3. HÀM VẼ LA BÀN
+# 3. HÀM VẼ ĐỒ HÌNH (PLOTLY)
 # ==========================================
 def draw_professional_luopan(df):
     fig = go.Figure()
@@ -114,7 +114,7 @@ def draw_professional_luopan(df):
             text=f"<b>{row['Ký Hiệu']}</b>" if text_weight == "bold" else row['Ký Hiệu'],
             textposition="bottom center", textfont=dict(size=14, color="#000000", family="Arial"),
             name=row['Tên'], hoverinfo="text",
-            hovertext=f"{row['Tên']}<br>Azimuth: {row['Azimuth (°)']}° (Sơn {row['Sơn']})<br>Altitude: {row['Altitude (°)']}°"
+            hovertext=f"{row['Tên']}<br>Sơn: {row['Sơn Thực Địa']}<br>Azimuth: {row['Azimuth (°)']}°<br>Altitude: {row['Altitude (°)']}°"
         ))
 
     for i in range(24):
@@ -132,14 +132,53 @@ def draw_professional_luopan(df):
     fig.add_trace(go.Scatterpolar(r=[180, 180], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
     return fig
 
+def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
+    fig = go.Figure()
+    tickvals = [(i * 30 + 255) % 360 for i in range(12)] 
+    
+    for i in range(12):
+        border_angle = i * 30 + 15
+        fig.add_trace(go.Scatterpolar(r=[0, 100], theta=[border_angle, border_angle], mode='lines', line=dict(color='#E5E7E9', width=1, dash='dash'), hoverinfo='skip'))
+
+    for idx, row in df_birth.iterrows():
+        fig.add_trace(go.Scatterpolar(
+            r=[50], theta=[row['Độ Hoàng Đạo']], mode='markers+text',
+            marker=dict(size=10, color='#BDC3C7', symbol='circle'), 
+            text=f"{row['Ký Hiệu']}", textposition="top center", textfont=dict(size=12, color="#7F8C8D"),
+            name=f"{row['Tên']} (Sinh)", hoverinfo="text", hovertext=f"BẢM SINH: {row['Tên']}<br>Cung: {row['Khu Vực Hoàng Đạo']}<br>Độ: {row['Độ Hoàng Đạo']}°"
+        ))
+
+    for idx, row in df_target.iterrows():
+        fig.add_trace(go.Scatterpolar(
+            r=[80], theta=[row['Độ Hoàng Đạo']], mode='markers+text',
+            marker=dict(size=12, color=row['Màu'], symbol='circle', line=dict(width=1, color='white')),
+            text=f"<b>{row['Ký Hiệu']}</b>", textposition="bottom center", textfont=dict(size=14, color="#000000"),
+            name=f"{row['Tên']} (Hiện)", hoverinfo="text", hovertext=f"HIỆN TẠI: {row['Tên']}<br>Cung: {row['Khu Vực Hoàng Đạo']}<br>Độ: {row['Độ Hoàng Đạo']}°"
+        ))
+
+    for clash in clash_pairs:
+        fig.add_trace(go.Scatterpolar(r=[50, 80], theta=[clash['birth_deg'], clash['target_deg']], mode='lines', line=dict(color='red', width=2), hoverinfo='skip'))
+
+    fig.update_layout(
+        polar=dict(
+            angularaxis=dict(direction="counterclockwise", rotation=180, tickmode="array", tickvals=tickvals, ticktext=DI_CHI_ZH, showline=False, showgrid=False),
+            radialaxis=dict(visible=False, range=[0, 100])
+        ),
+        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=20, b=20, l=20, r=20), height=500
+    )
+    
+    fig.add_trace(go.Scatterpolar(r=[50, 50], theta=[0, 360], mode='lines', line=dict(color='#E5E7E9', width=1), hoverinfo='skip'))
+    fig.add_trace(go.Scatterpolar(r=[80, 80], theta=[0, 360], mode='lines', line=dict(color='#E5E7E9', width=1), hoverinfo='skip'))
+    fig.add_trace(go.Scatterpolar(r=[100, 100], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
+    return fig
+
 # ==========================================
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
 st.sidebar.markdown("### THÔNG SỐ")
-lat = st.sidebar.number_input("Vĩ độ (Latitude)", value=21.0285, format="%.4f")
-lon = st.sidebar.number_input("Kinh độ (Longitude)", value=105.8542, format="%.4f")
+lat = st.sidebar.number_input("Vĩ độ", value=21.0285, format="%.4f")
+lon = st.sidebar.number_input("Kinh độ", value=105.8542, format="%.4f")
 
-# Đọc từ Session State để luôn đồng bộ giữa các Tab
 st.session_state.target_date = st.sidebar.date_input("Ngày", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
 st.session_state.target_time = st.sidebar.time_input("Giờ", value=st.session_state.target_time)
 
@@ -154,7 +193,6 @@ for i, (name, info) in enumerate(CELESTIAL_BODIES.items()):
     else:
         if col_cb2.checkbox(f"{info['char']} {name}", value=is_checked): active_bodies.append(name)
 
-# Tọa độ tại thời điểm hiện tại của Menu
 dt_target = local_tz.localize(datetime.datetime.combine(st.session_state.target_date, st.session_state.target_time))
 df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
@@ -162,19 +200,16 @@ tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI X
 
 # ----------------- TAB 1 -----------------
 with tab1:
-    # Chia cột để thu nhỏ biểu đồ cho dễ nhìn
     col1_1, col1_2, col1_3 = st.columns([1, 2, 1])
     with col1_2:
-        st.markdown(f"**ĐỒ HÌNH THIÊN THỂ** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
-        fig = draw_professional_luopan(df_target)
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
-        
-    st.markdown("**THÔNG TIN TỌA ĐỘ CHI TIẾT:**")
-    st.dataframe(df_target[['Tên', 'Ký Hiệu', 'Sơn', 'Azimuth (°)', 'Altitude (°)']], hide_index=True, use_container_width=True)
+        st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA | {dt_target.strftime('%H:%M %d/%m/%Y')}**")
+        fig1 = draw_professional_luopan(df_target)
+        st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': True}) 
 
 # ----------------- TAB 2 -----------------
 with tab2:
-    st.markdown("### ĐỐI CHIẾU LÁ SỐ & THỜI ĐIỂM DỰ KIẾN")
+    st.markdown("### LÁ SỐ BẨM SINH & ĐỐI CHIẾU XUNG KHẮC")
+    
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         birth_date = st.date_input("Ngày sinh", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1))
@@ -183,38 +218,58 @@ with tab2:
         
     dt_birth = local_tz.localize(datetime.datetime.combine(birth_date, birth_time))
     
-    if st.button("Kiểm Tra", type="primary"):
-        df_birth = calculate_positions(dt_birth, lat, lon, list(CELESTIAL_BODIES.keys()))
-        df_target_full = calculate_positions(dt_target, lat, lon, list(CELESTIAL_BODIES.keys()))
-        def check_xung(c1, c2): return abs(DI_CHI_ZH.index(c1) - DI_CHI_ZH.index(c2)) == 6
-            
-        jup_b = df_birth.loc[df_birth['Tên'] == 'Mộc Tinh', 'Chi'].values[0]
-        jup_t = df_target_full.loc[df_target_full['Tên'] == 'Mộc Tinh', 'Chi'].values[0]
-        sun_b = df_birth.loc[df_birth['Tên'] == 'Thái Dương', 'Chi'].values[0]
-        sun_t = df_target_full.loc[df_target_full['Tên'] == 'Thái Dương', 'Chi'].values[0]
-        moon_b = df_birth.loc[df_birth['Tên'] == 'Thái Âm', 'Chi'].values[0]
-        moon_t = df_target_full.loc[df_target_full['Tên'] == 'Thái Âm', 'Chi'].values[0]
-        
-        st.markdown("---")
+    df_birth_3 = calculate_positions(dt_birth, lat, lon, ['Thái Dương', 'Thái Âm', 'Mộc Tinh'])
+    df_target_3 = calculate_positions(dt_target, lat, lon, ['Thái Dương', 'Thái Âm', 'Mộc Tinh'])
+    
+    def check_xung(c1, c2): return abs(DI_CHI_ZH.index(c1) - DI_CHI_ZH.index(c2)) == 6
+
+    clash_pairs = []
+    for star in ['Mộc Tinh', 'Thái Dương', 'Thái Âm']:
+        chi_b = df_birth_3.loc[df_birth_3['Tên'] == star, 'Khu Vực Hoàng Đạo'].values[0]
+        chi_t = df_target_3.loc[df_target_3['Tên'] == star, 'Khu Vực Hoàng Đạo'].values[0]
+        if check_xung(chi_b, chi_t):
+            clash_pairs.append({
+                'name': star,
+                'birth_deg': df_birth_3.loc[df_birth_3['Tên'] == star, 'Độ Hoàng Đạo'].values[0],
+                'target_deg': df_target_3.loc[df_target_3['Tên'] == star, 'Độ Hoàng Đạo'].values[0]
+            })
+
+    col2_chart, col2_info = st.columns([1.5, 1])
+    with col2_chart:
+        st.markdown(f"**ĐỒ HÌNH HOÀNG ĐẠO (ĐỐI XUNG)**")
+        st.caption("*Vòng trong (Xám): Bẩm sinh. Vòng ngoài (Màu): Dự kiến.*")
+        fig2 = draw_ecliptic_chart(df_birth_3, df_target_3, clash_pairs)
+        st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': True})
+    
+    with col2_info:
+        st.markdown("#### BÁO CÁO PHÂN TÍCH")
+        st.markdown("*(Định dạng: Dự kiến / Bẩm sinh)*")
         has_error = False
+        
+        jup_b = df_birth_3.loc[df_birth_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
+        jup_t = df_target_3.loc[df_target_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
         if check_xung(jup_b, jup_t): 
-            st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh dự kiến (Khu {jup_t}) TRỰC XUNG với Mộc Tinh bản mệnh (Khu {jup_b}).")
+            st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh (Khu {jup_t}) TRỰC XUNG với bản mệnh (Khu {jup_b}).")
             has_error = True
         else: st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh ({jup_t} / {jup_b})")
             
+        sun_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
+        sun_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
         if check_xung(sun_b, sun_t): 
-            st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương dự kiến (Khu {sun_t}) TRỰC XUNG với Thái Dương bản mệnh (Khu {sun_b}).")
+            st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương (Khu {sun_t}) TRỰC XUNG với bản mệnh (Khu {sun_b}).")
             has_error = True
         else: st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương ({sun_t} / {sun_b})")
             
+        moon_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
+        moon_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
         if check_xung(moon_b, moon_t): 
-            st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm dự kiến (Khu {moon_t}) TRỰC XUNG với Thái Âm bản mệnh (Khu {moon_b}).")
+            st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm (Khu {moon_t}) TRỰC XUNG với bản mệnh (Khu {moon_b}).")
             has_error = True
         else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm ({moon_t} / {moon_b})")
             
-        if not has_error: st.markdown("<br>**KẾT LUẬN:** Thời điểm dự kiến hòa hợp với lá số cá nhân, không xuất hiện hiện tượng đối xung.", unsafe_allow_html=True)
+        if not has_error: st.markdown("<br>**KẾT LUẬN:** Thời điểm dự kiến hòa hợp với lá số cá nhân.", unsafe_allow_html=True)
 
-# ----------------- TAB 3 (THUẬT TOÁN VECTOR HÓA SIÊU TỐC) -----------------
+# ----------------- TAB 3 -----------------
 with tab3:
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
@@ -257,9 +312,6 @@ with tab3:
                 _, lon_ecl, _ = astrometric.ecliptic_latlon()
             return lon_ecl.degrees
 
-        # ==================================
-        # LOGIC THÁO DỠ
-        # ==================================
         if action_type == "THÁO DỠ (Lực Triều Suy)":
             for d in range(scan_days):
                 progress.progress(d / scan_days)
@@ -292,9 +344,6 @@ with tab3:
                             "Raw_Time": exact_time
                         })
                         
-        # ==================================
-        # LOGIC KÍCH HOẠT 
-        # ==================================
         else:
             for d in range(scan_days):
                 progress.progress(d / scan_days)
@@ -345,12 +394,11 @@ with tab3:
                             if len(bodies_in_son) >= 1:
                                 exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
                                 
-                                # Nếu có >= 2 sao phụ (Tổng >= 3 sao) thì mới tính Trọng tâm cụm sao
+                                # Chỉ báo Trọng Tâm khi có từ 3 sao trở lên (Thái Âm + >=2 sao khác)
                                 if len(bodies_in_son) >= 2:
                                     sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
-                                    best_events_today.append((sum_diff, exact_time, "Trọng tâm cụm sao", ", ".join(bodies_in_son)))
+                                    best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
                                 
-                                # Trùng khớp từng sao (Đổi chữ khít -> khớp)
                                 for b in bodies_in_son:
                                     diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
                                     best_events_today.append((diff_pair, exact_time, f"Thái Âm trùng khớp {b}", ", ".join(bodies_in_son)))
@@ -389,19 +437,15 @@ with tab3:
                                 "Giờ Đỉnh": row['Time'].strftime("%H:%M"),
                                 "Hiện Tượng": row['Type'],
                                 "Sai số góc": f"{round(row['Diff'], 2)}°",
-                                "Có mặt tại Sơn": row['Others'],
+                                "Các sao tại Sơn": row['Others'],
                                 "Raw_Time": row['Time']
                             })
 
         progress.progress(100)
         
-        # LƯU KẾT QUẢ VÀO SESSION STATE
-        if results:
-            st.session_state.scan_results = results
-        else:
-            st.session_state.scan_results = []
+        if results: st.session_state.scan_results = results
+        else: st.session_state.scan_results = []
             
-    # HIỂN THỊ KẾT QUẢ TỪ SESSION STATE (Đảm bảo không bị mất khi thao tác)
     st.markdown("---")
     if st.session_state.scan_results is not None:
         if len(st.session_state.scan_results) > 0:
@@ -412,15 +456,20 @@ with tab3:
             
             st.markdown("### XEM ĐỒ HÌNH TRỰC TIẾP")
             options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
-            selected_option = st.selectbox("Chọn mốc thời gian để cập nhật lên La Bàn chính:", list(options.keys()))
+            selected_option = st.selectbox("Chọn mốc thời gian để vẽ đồ hình:", list(options.keys()))
             
             if st.button("Vẽ Đồ Hình", type="primary"):
                 selected_time = options[selected_option]
-                # Cập nhật thời gian vào Session State
+                # Lưu vào state để không mất kết quả quét
                 st.session_state.target_date = selected_time.date()
                 st.session_state.target_time = selected_time.time()
-                st.success("Đã cập nhật hệ thống! Hãy chuyển sang **TAB I** để xem Đồ hình và Bảng tọa độ chi tiết.")
-                # Load lại trang để Tab 1 nhận diện dữ liệu mới
-                st.rerun()
+                
+                # Vẽ trực tiếp đồ hình dưới nút bấm
+                st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA CHI TIẾT TẠI: {selected_time.strftime('%H:%M %d/%m/%Y')}**")
+                df_preview = calculate_positions(selected_time, lat, lon, active_bodies)
+                col_p1, col_p2, col_p3 = st.columns([1,2,1])
+                with col_p2:
+                    fig_preview = draw_professional_luopan(df_preview)
+                    st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': True})
         else:
-            st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện khó này trong khung thời gian quét. Vui lòng hạ cấp độ kích hoạt hoặc mở rộng ngày dự kiến.")
+            st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện khó này trong khung thời gian quét.")
