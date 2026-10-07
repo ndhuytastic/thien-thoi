@@ -28,11 +28,12 @@ except ImportError:
     st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT).")
     st.stop()
 
-# Khởi tạo Session State
+# Khởi tạo Session State để lưu trữ dữ liệu không bị mất khi chuyển Tab
 local_tz = pytz.timezone('Asia/Ho_Chi_Minh')
 now = datetime.datetime.now(local_tz)
 if 'target_date' not in st.session_state: st.session_state.target_date = now.date()
 if 'target_time' not in st.session_state: st.session_state.target_time = now.time()
+if 'scan_results' not in st.session_state: st.session_state.scan_results = None # Lưu kết quả quét
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE
@@ -70,7 +71,7 @@ def get_angular_diff_vec(a1, a2):
     return np.minimum(diff, 360 - diff)
 
 # ==========================================
-# 2. HÀM TÍNH TOÁN CƠ BẢN
+# 2. HÀM TÍNH TOÁN
 # ==========================================
 def calculate_positions(dt, lat, lon, active_bodies):
     time = ts.from_datetime(dt)
@@ -113,7 +114,7 @@ def draw_professional_luopan(df):
             text=f"<b>{row['Ký Hiệu']}</b>" if text_weight == "bold" else row['Ký Hiệu'],
             textposition="bottom center", textfont=dict(size=14, color="#000000", family="Arial"),
             name=row['Tên'], hoverinfo="text",
-            hovertext=f"{row['Tên']}<br>Sơn: {row['Sơn']}<br>Azimuth: {row['Azimuth (°)']}°<br>Altitude: {row['Altitude (°)']}°"
+            hovertext=f"{row['Tên']}<br>Azimuth: {row['Azimuth (°)']}° (Sơn {row['Sơn']})<br>Altitude: {row['Altitude (°)']}°"
         ))
 
     for i in range(24):
@@ -125,7 +126,7 @@ def draw_professional_luopan(df):
             angularaxis=dict(direction="clockwise", rotation=-90, tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24_ZH, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 180])
         ),
-        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=20, b=20, l=20, r=20), height=450
+        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=20, b=20, l=20, r=20), height=500
     )
     fig.add_trace(go.Scatterpolar(r=[90, 90], theta=[0, 360], mode='lines', line=dict(color='#7F8C8D', width=1.5), hoverinfo='skip'))
     fig.add_trace(go.Scatterpolar(r=[180, 180], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
@@ -135,9 +136,10 @@ def draw_professional_luopan(df):
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
 st.sidebar.markdown("### THÔNG SỐ")
-lat = st.sidebar.number_input("Vĩ độ", value=21.0285, format="%.4f")
-lon = st.sidebar.number_input("Kinh độ", value=105.8542, format="%.4f")
+lat = st.sidebar.number_input("Vĩ độ (Latitude)", value=21.0285, format="%.4f")
+lon = st.sidebar.number_input("Kinh độ (Longitude)", value=105.8542, format="%.4f")
 
+# Đọc từ Session State để luôn đồng bộ giữa các Tab
 st.session_state.target_date = st.sidebar.date_input("Ngày", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
 st.session_state.target_time = st.sidebar.time_input("Giờ", value=st.session_state.target_time)
 
@@ -152,6 +154,7 @@ for i, (name, info) in enumerate(CELESTIAL_BODIES.items()):
     else:
         if col_cb2.checkbox(f"{info['char']} {name}", value=is_checked): active_bodies.append(name)
 
+# Tọa độ tại thời điểm hiện tại của Menu
 dt_target = local_tz.localize(datetime.datetime.combine(st.session_state.target_date, st.session_state.target_time))
 df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
@@ -159,11 +162,15 @@ tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI X
 
 # ----------------- TAB 1 -----------------
 with tab1:
-    st.markdown(f"**ĐỒ HÌNH THIÊN THỂ TẠI THỰC ĐỊA | {dt_target.strftime('%H:%M %d/%m/%Y')}**")
+    # Chia cột để thu nhỏ biểu đồ cho dễ nhìn
     col1_1, col1_2, col1_3 = st.columns([1, 2, 1])
     with col1_2:
+        st.markdown(f"**ĐỒ HÌNH THIÊN THỂ** | *{dt_target.strftime('%d/%m/%Y %H:%M')}*")
         fig = draw_professional_luopan(df_target)
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True}) 
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
+        
+    st.markdown("**THÔNG TIN TỌA ĐỘ CHI TIẾT:**")
+    st.dataframe(df_target[['Tên', 'Ký Hiệu', 'Sơn', 'Azimuth (°)', 'Altitude (°)']], hide_index=True, use_container_width=True)
 
 # ----------------- TAB 2 -----------------
 with tab2:
@@ -204,8 +211,10 @@ with tab2:
             st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm dự kiến (Khu {moon_t}) TRỰC XUNG với Thái Âm bản mệnh (Khu {moon_b}).")
             has_error = True
         else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm ({moon_t} / {moon_b})")
+            
+        if not has_error: st.markdown("<br>**KẾT LUẬN:** Thời điểm dự kiến hòa hợp với lá số cá nhân, không xuất hiện hiện tượng đối xung.", unsafe_allow_html=True)
 
-# ----------------- TAB 3 (THUẬT TOÁN ĐÃ FIX MÚI GIỜ) -----------------
+# ----------------- TAB 3 (THUẬT TOÁN VECTOR HÓA SIÊU TỐC) -----------------
 with tab3:
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
@@ -228,11 +237,9 @@ with tab3:
         results = []
         scan_bodies = active_bodies if len(active_bodies) >= 2 else list(CELESTIAL_BODIES.keys())
         
-        # HÀM TẠO TIME ARRAY CHUẨN MÚI GIỜ ĐỊA PHƯƠNG (Sửa lỗi lệch 7 tiếng)
         def get_t_arr(day_date):
             local_dt = local_tz.localize(datetime.datetime.combine(day_date, datetime.time(0, 0)))
             utc_dt = local_dt.astimezone(pytz.utc)
-            # Khởi tạo mảng 1440 phút bắt đầu từ 00:00 giờ Việt Nam (đã quy đổi ra UTC)
             return ts.utc(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour, utc_dt.minute + np.arange(1440))
         
         def get_daily_azimuth(day_date, body_name):
@@ -256,14 +263,12 @@ with tab3:
         if action_type == "THÁO DỠ (Lực Triều Suy)":
             for d in range(scan_days):
                 progress.progress(d / scan_days)
-                check_day = (dt_target + datetime.timedelta(days=d)).date()
+                check_day = (datetime.datetime.combine(st.session_state.target_date, datetime.time(0,0)) + datetime.timedelta(days=d)).date()
                 
-                # Quét nhanh xem có phải ngày Thượng/Hạ huyền không
                 sun_ecl_arr = get_daily_ecliptic(check_day, 'Thái Dương')
                 moon_ecl_arr = get_daily_ecliptic(check_day, 'Thái Âm')
                 diff_arr = get_angular_diff_vec(sun_ecl_arr, moon_ecl_arr)
                 
-                # Nếu trong ngày có lúc nào Nhật Nguyệt lệch nhau 85-95 độ
                 if np.any((diff_arr >= 80) & (diff_arr <= 100)): 
                     sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
                     moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
@@ -293,11 +298,10 @@ with tab3:
         else:
             for d in range(scan_days):
                 progress.progress(d / scan_days)
-                check_day = (dt_target + datetime.timedelta(days=d)).date()
+                check_day = (datetime.datetime.combine(st.session_state.target_date, datetime.time(0,0)) + datetime.timedelta(days=d)).date()
                 
                 is_soc_vong = False
                 if level == "Sóc/Vọng Nguyệt":
-                    # Check ngày Sóc Vọng
                     sun_ecl_noon = get_daily_ecliptic(check_day, 'Thái Dương')[720]
                     moon_ecl_noon = get_daily_ecliptic(check_day, 'Thái Âm')[720]
                     phase_diff = get_angular_diff_vec(sun_ecl_noon, moon_ecl_noon)
@@ -340,13 +344,16 @@ with tab3:
                                     
                             if len(bodies_in_son) >= 1:
                                 exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
-                                # Trọng tâm phân tán
-                                sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
-                                best_events_today.append((sum_diff, exact_time, "Trọng tâm cụm sao", ", ".join(bodies_in_son)))
-                                # Cặp trùng khít nhất
+                                
+                                # Nếu có >= 2 sao phụ (Tổng >= 3 sao) thì mới tính Trọng tâm cụm sao
+                                if len(bodies_in_son) >= 2:
+                                    sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
+                                    best_events_today.append((sum_diff, exact_time, "Trọng tâm cụm sao", ", ".join(bodies_in_son)))
+                                
+                                # Trùng khớp từng sao (Đổi chữ khít -> khớp)
                                 for b in bodies_in_son:
                                     diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
-                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm trùng khít {b}", ", ".join(bodies_in_son)))
+                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm trùng khớp {b}", ", ".join(bodies_in_son)))
 
                     elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
                         sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
@@ -357,7 +364,6 @@ with tab3:
                             
                             exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
                             
-                            # Tìm các sao khác tình cờ có mặt tại Sơn lúc này
                             others = []
                             t_m = ts.utc(exact_time.astimezone(pytz.utc))
                             for ob in scan_bodies:
@@ -388,27 +394,33 @@ with tab3:
                             })
 
         progress.progress(100)
-        st.markdown("---")
+        
+        # LƯU KẾT QUẢ VÀO SESSION STATE
         if results:
-            st.markdown(f"**TÌM THẤY {len(results)} KẾT QUẢ TỐI ƯU:**")
-            df_res = pd.DataFrame(results)
+            st.session_state.scan_results = results
+        else:
+            st.session_state.scan_results = []
+            
+    # HIỂN THỊ KẾT QUẢ TỪ SESSION STATE (Đảm bảo không bị mất khi thao tác)
+    st.markdown("---")
+    if st.session_state.scan_results is not None:
+        if len(st.session_state.scan_results) > 0:
+            res_list = st.session_state.scan_results
+            st.markdown(f"**TÌM THẤY {len(res_list)} KẾT QUẢ TỐI ƯU:**")
+            df_res = pd.DataFrame(res_list)
             st.dataframe(df_res.drop(columns=['Raw_Time']), use_container_width=True)
             
-            st.markdown("### 👉 XEM ĐỒ HÌNH TRỰC TIẾP")
-            options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in results}
-            selected_option = st.selectbox("Chọn mốc thời gian để vẽ La bàn:", list(options.keys()))
+            st.markdown("### XEM ĐỒ HÌNH TRỰC TIẾP")
+            options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
+            selected_option = st.selectbox("Chọn mốc thời gian để cập nhật lên La Bàn chính:", list(options.keys()))
             
             if st.button("Vẽ Đồ Hình", type="primary"):
                 selected_time = options[selected_option]
+                # Cập nhật thời gian vào Session State
                 st.session_state.target_date = selected_time.date()
                 st.session_state.target_time = selected_time.time()
-                
-                # Vẽ luôn biểu đồ ở Tab 3 để khỏi phải chuyển Tab
-                st.markdown(f"**LA BÀN CHI TIẾT TẠI: {selected_time.strftime('%H:%M %d/%m/%Y')}**")
-                df_preview = calculate_positions(selected_time, lat, lon, active_bodies)
-                col_p1, col_p2, col_p3 = st.columns([1,2,1])
-                with col_p2:
-                    fig_preview = draw_professional_luopan(df_preview)
-                    st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': True})
+                st.success("Đã cập nhật hệ thống! Hãy chuyển sang **TAB I** để xem Đồ hình và Bảng tọa độ chi tiết.")
+                # Load lại trang để Tab 1 nhận diện dữ liệu mới
+                st.rerun()
         else:
-            st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện.")
+            st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện khó này trong khung thời gian quét. Vui lòng hạ cấp độ kích hoạt hoặc mở rộng ngày dự kiến.")
