@@ -183,7 +183,7 @@ def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
 geolocator = Nominatim(user_agent="thien_thoi_app_vn")
 tf = TimezoneFinder()
 
-st.sidebar.markdown("### THÔNG SỐ VỊ TRÍ (DỰ KIẾN LÀM VIỆC)")
+st.sidebar.markdown("### THÔNG SỐ VỊ TRÍ")
 
 # Tính năng tìm kiếm địa chỉ tối ưu UI (Cạnh nhau)
 address_input = st.sidebar.text_input("Địa chỉ:", placeholder="Gõ địa chỉ và ấn Enter...")
@@ -258,8 +258,8 @@ with tab1:
 
 # ----------------- TAB 2 (BỔ SUNG THÔNG TIN NƠI SINH) -----------------
 with tab2:
-    st.markdown("### CÀI ĐẶT LÁ SỐ BẨM SINH")
-    st.markdown("Vui lòng nhập Tọa độ & Múi giờ nơi sinh để tính toán chính xác Thị sai (Parallax) của Mặt Trăng và vị trí Hoàng đạo lúc cắt rốn.")
+    st.markdown("### LÁ SỐ BẨM SINH")
+    st.markdown("Vui lòng nhập Tọa độ & Múi giờ nơi sinh")
     
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b1:
@@ -308,18 +308,18 @@ with tab2:
         
         jup_b = df_birth_3.loc[df_birth_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
         jup_t = df_target_3.loc[df_target_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
-        if check_xung(jup_b, jup_t): st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh (Dự kiến: {jup_t} / Bẩm sinh: {jup_b})")
-        else: st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh (Dự kiến: {jup_t} / Bẩm sinh: {jup_b})")
+        if check_xung(jup_b, jup_t): st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh ({jup_b} / {jup_t})")
+        else: st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh ({jup_b} / {jup_t})")
             
         sun_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
         sun_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
-        if check_xung(sun_b, sun_t): st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương (Dự kiến: {sun_t} / Bẩm sinh: {sun_b})")
-        else: st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương (Dự kiến: {sun_t} / Bẩm sinh: {sun_b})")
+        if check_xung(sun_b, sun_t): st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương ({sun_b} / {sun_t})")
+        else: st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương ({sun_b} / {sun_t})")
             
         moon_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
         moon_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
-        if check_xung(moon_b, moon_t): st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm (Dự kiến: {moon_t} / Bẩm sinh: {moon_b})")
-        else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm (Dự kiến: {moon_t} / Bẩm sinh: {moon_b})")
+        if check_xung(moon_b, moon_t): st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm ({moon_b} / {moon_t})")
+        else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm ({moon_b} / {moon_t})")
 
 # ----------------- TAB 3 -----------------
 with tab3:
