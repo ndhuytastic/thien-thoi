@@ -4,6 +4,9 @@ import pytz
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+import urllib.request
+import csv
+import io
 from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
 
@@ -69,6 +72,33 @@ CELESTIAL_BODIES = {
 DI_CHI_ZH = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
 SƠN_24_ZH = ["子", "癸", "丑", "艮", "寅", "甲", "卯", "乙", "辰", "巽", "巳", "丙", 
              "午", "丁", "未", "坤", "申", "庚", "酉", "辛", "戌", "乾", "亥", "壬"]
+
+# TỪ ĐIỂN DỊCH TÊN 24 SƠN ĐỂ QUÉT SHEET
+CHAR_TO_VIET = {
+    '甲':'Giáp', '乙':'Ất', '丙':'Bính', '丁':'Đinh', '戊':'Mậu', '己':'Kỷ', '庚':'Canh', '辛':'Tân', '壬':'Nhâm', '癸':'Quý',
+    '子':'Tý', '丑':'Sửu', '寅':'Dần', '卯':'Mão', '辰':'Thìn', '巳':'Tỵ', '午':'Ngọ', '未':'Mùi', '申':'Thân', '酉':'Dậu', '戌':'Tuất', '亥':'Hợi',
+    '乾':'Càn', '坤':'Khôn', '艮':'Cấn', '巽':'Tốn'
+}
+
+@st.cache_data(ttl=3600)
+def load_google_sheets():
+    warnings_list = []
+    SHEET_WARNINGS_URL = "https://docs.google.com/spreadsheets/d/12Mq8O7AhR4BCJc_vw3GzRNhjpQp7j53DgJbHY-xyQ34/export?format=csv&gid=0"
+    try:
+        req = urllib.request.Request(SHEET_WARNINGS_URL)
+        with urllib.request.urlopen(req) as response:
+            csv_data = response.read().decode('utf-8')
+        reader = csv.DictReader(io.StringIO(csv_data))
+        for row in reader:
+            than_a = row.get('Than_A', '').strip()
+            quan_he = row.get('Quan_He', '').strip()
+            than_b = row.get('Than_B', '').strip()
+            y_nghia = row.get('Y_Nghia', '').strip()
+            if than_a and than_b:
+                warnings_list.append({"category": than_a, "name": quan_he, "triggers": than_b, "desc": y_nghia})
+    except Exception as e:
+        pass
+    return warnings_list
 
 def get_24_son(azimuth): return SƠN_24_ZH[int(((azimuth + 7.5) % 360) / 15)]
 def get_di_chi_hoang_dao(degree): return DI_CHI_ZH[int(((degree + 105) % 360) / 30)]
@@ -177,6 +207,44 @@ def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
     fig.add_trace(go.Scatterpolar(r=[100, 100], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
     return fig
 
+def draw_empty_luopan(selected_son_idx):
+    fig = go.Figure()
+
+    # Tạo Highlight (Tô màu Vàng nhạt) cho Sơn đang được chọn
+    start_angle = selected_son_idx * 15 - 7.5
+    end_angle = selected_son_idx * 15 + 7.5
+    fig.add_trace(go.Scatterpolar(
+        r=[0, 180, 180, 0], theta=[start_angle, start_angle, end_angle, end_angle],
+        fill='toself', fillcolor='rgba(241, 196, 15, 0.4)', # Màu vàng nhạt trong suốt
+        line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
+    ))
+
+    # Vẽ vạch chia 24 Sơn VÀ thêm con số Độ ở viền ngoài
+    for i in range(24):
+        border_angle = i * 15 + 7.5
+        # Kẻ vạch
+        fig.add_trace(go.Scatterpolar(r=[0, 180], theta=[border_angle, border_angle], mode='lines', line=dict(color='#BDC3C7', width=1), hoverinfo='skip'))
+        # Viết số (Độ) ở viền ngoài cùng (R=195)
+        degree_text = f"{border_angle % 360}°"
+        if degree_text == "0.0°": degree_text = "0/360°"
+        fig.add_trace(go.Scatterpolar(
+            r=[195], theta=[border_angle], mode='text',
+            text=degree_text, textfont=dict(size=10, color="#7F8C8D"), hoverinfo='skip'
+        ))
+
+    # Cấu hình mặt la bàn (Nam ở trên)
+    fig.update_layout(
+        polar=dict(
+            angularaxis=dict(direction="clockwise", rotation=-90, tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24_ZH, showline=False, showgrid=False),
+            radialaxis=dict(visible=False, range=[0, 210]) # Mở rộng bán kính ra 210 để chứa số
+        ),
+        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=30, b=30, l=30, r=30), height=500
+    )
+    
+    fig.add_trace(go.Scatterpolar(r=[90, 90], theta=[0, 360], mode='lines', line=dict(color='#7F8C8D', width=1.5), hoverinfo='skip'))
+    fig.add_trace(go.Scatterpolar(r=[180, 180], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
+    return fig
+
 # ==========================================
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
@@ -246,7 +314,7 @@ local_tz = pytz.timezone(st.session_state.tz_str)
 dt_target = local_tz.localize(datetime.datetime.combine(st.session_state.target_date, st.session_state.target_time))
 df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
-tab1, tab2, tab3 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI XUNG", "III. TRẠCH NHẬT KÍCH HOẠT / THÁO DỠ"])
+tab1, tab2, tab3, tab4 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI XUNG", "III. TRẠCH NHẬT KÍCH HOẠT", "IV. TUYẾN KHÍ 24 SƠN"])
 
 # ----------------- TAB 1 -----------------
 with tab1:
@@ -525,3 +593,45 @@ with tab3:
                     st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': True}, key=f"plot_{selected_time.timestamp()}")
         else:
             st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện.")
+
+# ----------------- TAB 4 (TUYẾN KHÍ 24 SƠN) -----------------
+with tab4:
+    st.markdown("### TRA CỨU HỆ THỐNG TUYẾN KHÍ THỰC ĐỊA")
+    st.markdown("Chọn Sơn hướng trên La bàn để tra cứu các cảnh báo Tuyến khí, Tương tác thần sát tương ứng.")
+    
+    warnings_list = load_google_sheets()
+    
+    col_4a, col_4b = st.columns([1.5, 1])
+    
+    with col_4b:
+        st.markdown("<br>", unsafe_allow_html=True)
+        selected_son_tab4 = st.selectbox("📌 Chọn Sơn Hướng (Bấm vào đây để chọn):", SƠN_24_ZH)
+        sel_idx = SƠN_24_ZH.index(selected_son_tab4)
+        viet_name = CHAR_TO_VIET.get(selected_son_tab4, "")
+        
+        st.markdown(f"**👉 THÔNG TIN CHO SƠN: {selected_son_tab4} ({viet_name})**")
+        st.markdown("---")
+        
+        # Quét và hiển thị data từ Google Sheets
+        found = False
+        if warnings_list:
+            for w in warnings_list:
+                # Tìm chữ tiếng Việt (Ví dụ: "Càn") trong cột triggers của sheet
+                if viet_name in w['triggers']:
+                    found = True
+                    desc_html = f"<br><span style='color:#555;'>{w['desc']}</span>" if w['desc'] else ""
+                    st.markdown(f"""
+                    <div style='background-color:#F2F3F4; padding:10px 15px; border-left:4px solid #2C3E50; margin-bottom:12px; border-radius:3px;'>
+                        <b style='color:#E74C3C; font-size: 15px;'>{w['name']}</b> 
+                        <span style='font-size:13px; color:#7F8C8D;'><i>({w['category']})</i></span>
+                        {desc_html}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+        if not found:
+            st.info("Hiện không có ghi chú tuyến khí nào cho Sơn hướng này.")
+            
+    with col_4a:
+        # Vẽ La bàn và truyền Sơn được chọn vào để làm hiệu ứng Highlight
+        fig4 = draw_empty_luopan(sel_idx)
+        st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': True})
