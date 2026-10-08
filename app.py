@@ -590,36 +590,48 @@ with tab3:
         else:
             st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện.")
 
-def draw_empty_luopan(selected_son_idx):
-    fig = go.Figure()
-
-    start_angle = selected_son_idx * 15 - 7.5
-    end_angle = selected_son_idx * 15 + 7.5
-    fig.add_trace(go.Scatterpolar(
-        r=[0, 180, 180, 0], theta=[start_angle, start_angle, end_angle, end_angle],
-        fill='toself', fillcolor='rgba(241, 196, 15, 0.4)',
-        line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo='skip'
-    ))
-
-    for i in range(24):
-        border_angle = i * 15 + 7.5
-        fig.add_trace(go.Scatterpolar(r=[0, 180], theta=[border_angle, border_angle], mode='lines', line=dict(color='#BDC3C7', width=1), hoverinfo='skip'))
-        degree_text = f"{border_angle % 360}°"
-        if degree_text == "0.0°": degree_text = "0/360°"
-        fig.add_trace(go.Scatterpolar(
-            r=[195], theta=[border_angle], mode='text',
-            text=degree_text, textfont=dict(size=10, color="#7F8C8D"), hoverinfo='skip'
-        ))
-
-    fig.update_layout(
-        polar=dict(
-            angularaxis=dict(direction="clockwise", rotation=-90, tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24_ZH, showline=False, showgrid=False),
-            radialaxis=dict(visible=False, range=[0, 210])
-        ),
-        # Đã giảm height từ 500 xuống 380, và thu hẹp lề (margin) để hình nhỏ gọn lại
-        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=10, b=10, l=10, r=10), height=380
-    )
+# ----------------- TAB 4 (TUYẾN KHÍ 24 SƠN) -----------------
+with tab4:
+    warnings_list = load_google_sheets()
     
-    fig.add_trace(go.Scatterpolar(r=[90, 90], theta=[0, 360], mode='lines', line=dict(color='#7F8C8D', width=1.5), hoverinfo='skip'))
-    fig.add_trace(go.Scatterpolar(r=[180, 180], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
-    return fig
+    # Chỉnh lại tỷ lệ cột: Cột hình (col_4a) nhỏ lại thành 1, Cột chữ (col_4b) to ra thành 1.2
+    col_4a, col_4b = st.columns([1, 1.2])
+    
+    with col_4b:
+        selected_son_tab4 = st.selectbox("Chọn Sơn Hướng:", SƠN_24_ZH)
+        sel_idx = SƠN_24_ZH.index(selected_son_tab4)
+        viet_name = CHAR_TO_VIET.get(selected_son_tab4, "")
+        
+        st.markdown("**Thông Tin**")
+        st.markdown("---")
+        
+        if warnings_list:
+            grouped_data = {}
+            for w in warnings_list:
+                if viet_name in w['triggers']:
+                    cat = w['category'].upper()
+                    if cat not in grouped_data:
+                        grouped_data[cat] = []
+                    grouped_data[cat].append(w)
+            
+            if grouped_data:
+                html_output = ""
+                for cat, items in grouped_data.items():
+                    # Đã xóa bỏ các khoảng trắng lùi đầu dòng để tránh lỗi Markdown Code Block của Streamlit
+                    html_output += f"<div style='margin-bottom: 20px;'>"
+                    html_output += f"<div style='font-weight: bold; font-size: 16px; color: #2C3E50; border-bottom: 1px solid #333; padding-bottom: 4px; margin-bottom: 12px; display: inline-block;'>{cat}</div>"
+                    for item in items:
+                        desc_html = f"<div style='color: #444; font-size: 14.5px; margin-top: 3px; line-height: 1.5;'>{item['desc']}</div>" if item['desc'] else ""
+                        html_output += f"<div style='margin-bottom: 15px;'><span style='font-weight: bold; font-size: 15px; color: #000;'>{item['name']}</span> <span style='font-style: italic; color: #7F8C8D; font-size: 14px;'>{item['triggers']}</span>{desc_html}</div>"
+                    html_output += "</div>"
+                
+                st.markdown(html_output, unsafe_allow_html=True)
+            else:
+                st.info("Hiện không có ghi chú tuyến khí nào cho Sơn hướng này.")
+        else:
+            st.warning("Đang tải dữ liệu hoặc không có kết nối tới Google Sheets.")
+            
+    with col_4a:
+        st.markdown("<br>", unsafe_allow_html=True)
+        fig4 = draw_empty_luopan(sel_idx)
+        st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': False})
