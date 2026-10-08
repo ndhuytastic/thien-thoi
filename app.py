@@ -596,42 +596,62 @@ with tab3:
 
 # ----------------- TAB 4 (TUYẾN KHÍ 24 SƠN) -----------------
 with tab4:
-    st.markdown("### TRA CỨU HỆ THỐNG TUYẾN KHÍ THỰC ĐỊA")
-    st.markdown("Chọn Sơn hướng trên La bàn để tra cứu các cảnh báo Tuyến khí, Tương tác thần sát tương ứng.")
-    
     warnings_list = load_google_sheets()
     
     col_4a, col_4b = st.columns([1.5, 1])
     
     with col_4b:
         st.markdown("<br>", unsafe_allow_html=True)
-        selected_son_tab4 = st.selectbox("📌 Chọn Sơn Hướng (Bấm vào đây để chọn):", SƠN_24_ZH)
+        # Bỏ icon và đổi tên theo yêu cầu
+        selected_son_tab4 = st.selectbox("Chọn Sơn Hướng:", SƠN_24_ZH)
         sel_idx = SƠN_24_ZH.index(selected_son_tab4)
         viet_name = CHAR_TO_VIET.get(selected_son_tab4, "")
         
-        st.markdown(f"**👉 THÔNG TIN CHO SƠN: {selected_son_tab4} ({viet_name})**")
+        st.markdown("**Thông Tin**")
         st.markdown("---")
         
-        # Quét và hiển thị data từ Google Sheets
-        found = False
+        # Gom nhóm và hiển thị dữ liệu theo đúng chuẩn format của ảnh
         if warnings_list:
+            # Bước 1: Lọc và gom nhóm dữ liệu theo Category (Than_A)
+            grouped_data = {}
             for w in warnings_list:
-                # Tìm chữ tiếng Việt (Ví dụ: "Càn") trong cột triggers của sheet
                 if viet_name in w['triggers']:
-                    found = True
-                    desc_html = f"<br><span style='color:#555;'>{w['desc']}</span>" if w['desc'] else ""
-                    st.markdown(f"""
-                    <div style='background-color:#F2F3F4; padding:10px 15px; border-left:4px solid #2C3E50; margin-bottom:12px; border-radius:3px;'>
-                        <b style='color:#E74C3C; font-size: 15px;'>{w['name']}</b> 
-                        <span style='font-size:13px; color:#7F8C8D;'><i>({w['category']})</i></span>
-                        {desc_html}
-                    </div>
-                    """, unsafe_allow_html=True)
+                    cat = w['category'].upper() # Viết hoa tiêu đề nhóm
+                    if cat not in grouped_data:
+                        grouped_data[cat] = []
+                    grouped_data[cat].append(w)
+            
+            # Bước 2: Hiển thị HTML theo nhóm
+            if grouped_data:
+                html_output = ""
+                for cat, items in grouped_data.items():
+                    # Tiêu đề nhóm (Viết hoa, có đường gạch chân)
+                    html_output += f"""
+                    <div style='margin-bottom: 20px;'>
+                        <div style='font-weight: bold; font-size: 16px; color: #2C3E50; border-bottom: 1px solid #333; padding-bottom: 4px; margin-bottom: 12px; display: inline-block;'>
+                            {cat}
+                        </div>
+                    """
                     
-        if not found:
-            st.info("Hiện không có ghi chú tuyến khí nào cho Sơn hướng này.")
+                    # Các mục con bên trong nhóm
+                    for item in items:
+                        desc_html = f"<div style='color: #444; font-size: 14.5px; margin-top: 3px; line-height: 1.5;'>{item['desc']}</div>" if item['desc'] else ""
+                        html_output += f"""
+                        <div style='margin-bottom: 15px;'>
+                            <span style='font-weight: bold; font-size: 15px; color: #000;'>{item['name']}</span> 
+                            <span style='font-style: italic; color: #7F8C8D; font-size: 14px;'>{item['triggers']}</span>
+                            {desc_html}
+                        </div>
+                        """
+                    html_output += "</div>" # Đóng thẻ div của nhóm
+                
+                st.markdown(html_output, unsafe_allow_html=True)
+            else:
+                st.info("Hiện không có ghi chú tuyến khí nào cho Sơn hướng này.")
+        else:
+            st.warning("Đang tải dữ liệu hoặc không có kết nối tới Google Sheets.")
             
     with col_4a:
-        # Vẽ La bàn và truyền Sơn được chọn vào để làm hiệu ứng Highlight
+        # Vẽ La bàn
         fig4 = draw_empty_luopan(sel_idx)
-        st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': True})
+        st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': False})
