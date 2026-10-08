@@ -574,10 +574,6 @@ with tab3:
             options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
             selected_option = st.selectbox("Mốc thời gian:", list(options.keys()))
             
-            st.markdown("### XEM ĐỒ HÌNH & ĐỒNG BỘ")
-            options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
-            selected_option = st.selectbox("Chọn mốc thời gian để vẽ đồ hình và đồng bộ toàn hệ thống:", list(options.keys()))
-            
             if st.button("Vẽ Đồ Hình & Đồng Bộ", type="primary"):
                 selected_time = options[selected_option]
                 
@@ -592,7 +588,7 @@ with tab3:
                 
             # Render đồ hình tại Tab 3 (Dữ liệu không bị mất do đã lưu vào session_state)
             if 'preview_time' in st.session_state and st.session_state.preview_time is not None:
-                st.success("**Đồng bộ**")
+                st.success("**Thành Công**")
                 
                 st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA CHI TIẾT TẠI: {st.session_state.preview_time.strftime('%H:%M %d/%m/%Y')}**")
                 df_preview = calculate_positions(st.session_state.preview_time, lat, lon, active_bodies)
@@ -601,6 +597,7 @@ with tab3:
                     fig_preview = draw_professional_luopan(df_preview)
                     # Dùng timestamp làm key để tránh lỗi trùng lặp biểu đồ của Plotly
                     st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': False}, key=f"preview_{st.session_state.preview_time.timestamp()}")
+
 # ----------------- TAB 4 (TUYẾN KHÍ 24 SƠN) -----------------
 with tab4:
     warnings_list = load_google_sheets()
