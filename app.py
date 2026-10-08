@@ -43,6 +43,7 @@ if 'lat' not in st.session_state: st.session_state.lat = 21.0285
 if 'lon' not in st.session_state: st.session_state.lon = 105.8542
 if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
 if 'search_results' not in st.session_state: st.session_state.search_results = None
+if 'preview_time' not in st.session_state: st.session_state.preview_time = None
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE
@@ -233,7 +234,7 @@ def draw_empty_luopan(selected_son_idx):
             angularaxis=dict(direction="clockwise", rotation=-90, tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24_ZH, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 210])
         ),
-        # Đã giảm height từ 500 xuống 380, và thu hẹp lề (margin) để hình nhỏ gọn lại
+        # Đã giảm height từ 500 xuống 380
         showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=10, b=10, l=10, r=10), height=380
     )
     
@@ -569,27 +570,37 @@ with tab3:
             df_res = pd.DataFrame(res_list)
             st.dataframe(df_res.drop(columns=['Raw_Time']), use_container_width=True)
             
-            st.markdown("### XEM ĐỒ HÌNH TRỰC TIẾP")
+            st.markdown("### XEM TRỰC TIẾP")
             options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
-            selected_option = st.selectbox("Chọn mốc thời gian để vẽ đồ hình:", list(options.keys()))
+            selected_option = st.selectbox("Mốc thời gian:", list(options.keys()))
             
-            if st.button("Vẽ Đồ Hình", type="primary"):
+            st.markdown("### XEM ĐỒ HÌNH & ĐỒNG BỘ")
+            options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
+            selected_option = st.selectbox("Chọn mốc thời gian để vẽ đồ hình và đồng bộ toàn hệ thống:", list(options.keys()))
+            
+            if st.button("Vẽ Đồ Hình & Đồng Bộ", type="primary"):
                 selected_time = options[selected_option]
                 
-                # Cập nhật thời gian thực địa để vẽ
+                # 1. Cập nhật thời gian vào Session State (Điều này sẽ làm Sidebar, Tab 1 và Tab 2 tự động nhảy theo)
                 st.session_state.target_date = selected_time.date()
                 st.session_state.target_time = selected_time.time()
                 
-                st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA CHI TIẾT TẠI: {selected_time.strftime('%H:%M %d/%m/%Y')}**")
-                df_preview = calculate_positions(selected_time, lat, lon, active_bodies)
-                col_p1, col_p2, col_p3 = st.columns([1,2,1])
+                # 2. Lưu lại thời gian này để vẽ đồ hình preview ngay bên dưới
+                st.session_state.preview_time = selected_time
+                
+                st.rerun() # Refresh app để áp dụng thay đổi
+                
+            # Render đồ hình tại Tab 3 (Dữ liệu không bị mất do đã lưu vào session_state)
+            if 'preview_time' in st.session_state and st.session_state.preview_time is not None:
+                st.success("**Đồng bộ**")
+                
+                st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA CHI TIẾT TẠI: {st.session_state.preview_time.strftime('%H:%M %d/%m/%Y')}**")
+                df_preview = calculate_positions(st.session_state.preview_time, lat, lon, active_bodies)
+                col_p1, col_p2, col_p3 = st.columns([1,1.5,1])
                 with col_p2:
                     fig_preview = draw_professional_luopan(df_preview)
-                    # Thêm key bằng timestamp để tránh lỗi trùng Element ID
-                    st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': True}, key=f"plot_{selected_time.timestamp()}")
-        else:
-            st.markdown("> **[THÔNG BÁO]** Không tìm thấy thời điểm nào thỏa mãn điều kiện.")
-
+                    # Dùng timestamp làm key để tránh lỗi trùng lặp biểu đồ của Plotly
+                    st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': False}, key=f"preview_{st.session_state.preview_time.timestamp()}")
 # ----------------- TAB 4 (TUYẾN KHÍ 24 SƠN) -----------------
 with tab4:
     warnings_list = load_google_sheets()
