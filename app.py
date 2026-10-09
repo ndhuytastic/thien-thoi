@@ -4,11 +4,9 @@ import pytz
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
-import urllib.request
-import csv
-import io
 from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
+from streamlit_local_storage import LocalStorage
 
 # ==========================================
 # CẤU HÌNH TRANG & STATE
@@ -30,10 +28,10 @@ st.markdown("""
 try:
     from skyfield.api import load, Topos
 except ImportError:
-    st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT).")
+    st.error("Yêu cầu khởi động lại máy chủ (Reboot).")
     st.stop()
 
-# Khởi tạo Session State 
+# Khởi tạo Session State
 local_tz = pytz.timezone('Asia/Ho_Chi_Minh')
 now = datetime.datetime.now(local_tz)
 if 'target_date' not in st.session_state: st.session_state.target_date = now.date()
@@ -43,11 +41,30 @@ if 'lat' not in st.session_state: st.session_state.lat = 21.0285
 if 'lon' not in st.session_state: st.session_state.lon = 105.8542
 if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
 if 'search_results' not in st.session_state: st.session_state.search_results = None
-if 'preview_time' not in st.session_state: st.session_state.preview_time = None
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE
 # ==========================================
+@st.cache_data(ttl=3600)
+def load_google_sheets():
+    import urllib.request, csv, io
+    warnings_list = []
+    SHEET_WARNINGS_URL = "https://docs.google.com/spreadsheets/d/12Mq8O7AhR4BCJc_vw3GzRNhjpQp7j53DgJbHY-xyQ34/export?format=csv&gid=0"
+    try:
+        req = urllib.request.Request(SHEET_WARNINGS_URL)
+        with urllib.request.urlopen(req) as response:
+            csv_data = response.read().decode('utf-8')
+        reader = csv.DictReader(io.StringIO(csv_data))
+        for row in reader:
+            than_a = row.get('Than_A', '').strip()
+            quan_he = row.get('Quan_He', '').strip()
+            than_b = row.get('Than_B', '').strip()
+            y_nghia = row.get('Y_Nghia', '').strip()
+            if than_a and than_b:
+                warnings_list.append({"category": than_a, "name": quan_he, "triggers": than_b, "desc": y_nghia})
+    except: pass
+    return warnings_list
+
 @st.cache_resource
 def load_astronomy_data():
     ts = load.timescale()
@@ -70,46 +87,23 @@ CELESTIAL_BODIES = {
     'Diêm Vương':  {'char': '冥', 'color': '#34495E', 'node': eph['pluto barycenter']}
 }
 
-DI_CHI_ZH = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
-SƠN_24_ZH = ["子", "癸", "丑", "艮", "寅", "甲", "卯", "乙", "辰", "巽", "巳", "丙", 
-             "午", "丁", "未", "坤", "申", "庚", "酉", "辛", "戌", "乾", "亥", "壬"]
-
-# TỪ ĐIỂN DỊCH TÊN 24 SƠN ĐỂ QUÉT SHEET
 CHAR_TO_VIET = {
     '甲':'Giáp', '乙':'Ất', '丙':'Bính', '丁':'Đinh', '戊':'Mậu', '己':'Kỷ', '庚':'Canh', '辛':'Tân', '壬':'Nhâm', '癸':'Quý',
     '子':'Tý', '丑':'Sửu', '寅':'Dần', '卯':'Mão', '辰':'Thìn', '巳':'Tỵ', '午':'Ngọ', '未':'Mùi', '申':'Thân', '酉':'Dậu', '戌':'Tuất', '亥':'Hợi',
     '乾':'Càn', '坤':'Khôn', '艮':'Cấn', '巽':'Tốn'
 }
-
-@st.cache_data(ttl=3600)
-def load_google_sheets():
-    warnings_list = []
-    SHEET_WARNINGS_URL = "https://docs.google.com/spreadsheets/d/12Mq8O7AhR4BCJc_vw3GzRNhjpQp7j53DgJbHY-xyQ34/export?format=csv&gid=0"
-    try:
-        req = urllib.request.Request(SHEET_WARNINGS_URL)
-        with urllib.request.urlopen(req) as response:
-            csv_data = response.read().decode('utf-8')
-        reader = csv.DictReader(io.StringIO(csv_data))
-        for row in reader:
-            than_a = row.get('Than_A', '').strip()
-            quan_he = row.get('Quan_He', '').strip()
-            than_b = row.get('Than_B', '').strip()
-            y_nghia = row.get('Y_Nghia', '').strip()
-            if than_a and than_b:
-                warnings_list.append({"category": than_a, "name": quan_he, "triggers": than_b, "desc": y_nghia})
-    except Exception as e:
-        pass
-    return warnings_list
+DI_CHI_ZH = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
+SƠN_24_ZH = ["子", "癸", "丑", "艮", "寅", "甲", "卯", "乙", "辰", "巽", "巳", "丙", 
+             "午", "丁", "未", "坤", "申", "庚", "酉", "辛", "戌", "乾", "亥", "壬"]
 
 def get_24_son(azimuth): return SƠN_24_ZH[int(((azimuth + 7.5) % 360) / 15)]
 def get_di_chi_hoang_dao(degree): return DI_CHI_ZH[int(((degree + 105) % 360) / 30)]
-
 def get_angular_diff_vec(a1, a2): 
     diff = np.abs(a1 - a2)
     return np.minimum(diff, 360 - diff)
 
 # ==========================================
-# 2. HÀM TÍNH TOÁN CƠ BẢN
+# 2. HÀM TÍNH TOÁN
 # ==========================================
 def calculate_positions(dt, lat, lon, active_bodies):
     time = ts.from_datetime(dt)
@@ -130,28 +124,26 @@ def calculate_positions(dt, lat, lon, active_bodies):
         results.append({
             "Tên": name, "Ký Hiệu": info['char'], "Màu": info['color'],
             "Độ Hoàng Đạo": round(lon_ecl.degrees, 2), "Khu Vực Hoàng Đạo": get_di_chi_hoang_dao(lon_ecl.degrees),
-            "Azimuth (°)": round(az.degrees, 2), "Altitude (°)": round(alt.degrees, 2), "Sơn Thực Địa": get_24_son(az.degrees)
+            "Azimuth": round(az.degrees, 2), "Altitude": round(alt.degrees, 2), "Sơn Thực Địa": get_24_son(az.degrees)
         })
     return pd.DataFrame(results)
 
 # ==========================================
-# 3. HÀM VẼ ĐỒ HÌNH (PLOTLY)
+# 3. HÀM VẼ ĐỒ HÌNH
 # ==========================================
 def draw_professional_luopan(df):
     fig = go.Figure()
-    df['r_plot'] = 90 - df['Altitude (°)']
+    df['r_plot'] = 90 - df['Altitude']
 
     for idx, row in df.iterrows():
         marker_size = 14 if row['Tên'] in ['Thái Dương', 'Thái Âm'] else 10
         text_weight = "bold" if row['Tên'] in ['Thái Dương', 'Thái Âm'] else "normal"
-        
         fig.add_trace(go.Scatterpolar(
-            r=[row['r_plot']], theta=[row['Azimuth (°)']], mode='markers+text',
+            r=[row['r_plot']], theta=[row['Azimuth']], mode='markers+text',
             marker=dict(size=marker_size, color=row['Màu'], symbol='circle', line=dict(width=1, color='white')),
             text=f"<b>{row['Ký Hiệu']}</b>" if text_weight == "bold" else row['Ký Hiệu'],
             textposition="bottom center", textfont=dict(size=14, color="#000000", family="Arial"),
-            name=row['Tên'], hoverinfo="text",
-            hovertext=f"{row['Tên']}<br>Sơn: {row['Sơn Thực Địa']}<br>Azimuth: {row['Azimuth (°)']}°<br>Altitude: {row['Altitude (°)']}°"
+            name=row['Tên'], hoverinfo="text", hovertext=f"{row['Tên']}<br>Sơn: {row['Sơn Thực Địa']}<br>Azimuth: {row['Azimuth']}°<br>Altitude: {row['Altitude']}°"
         ))
 
     for i in range(24):
@@ -171,7 +163,8 @@ def draw_professional_luopan(df):
 
 def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
     fig = go.Figure()
-    tickvals = [270, 300, 330, 0, 30, 60, 90, 120, 150, 180, 210, 240]
+    tickvals = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330]
+    ticktext = ["卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥", "子", "丑", "寅"]
     
     for i in range(12):
         border_angle = i * 30 + 15
@@ -198,7 +191,7 @@ def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
 
     fig.update_layout(
         polar=dict(
-            angularaxis=dict(direction="counterclockwise", rotation=0, tickmode="array", tickvals=tickvals, ticktext=DI_CHI_ZH, showline=False, showgrid=False),
+            angularaxis=dict(direction="clockwise", rotation=180, tickmode="array", tickvals=tickvals, ticktext=ticktext, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 100])
         ),
         showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=20, b=20, l=20, r=20), height=500
@@ -210,9 +203,9 @@ def draw_ecliptic_chart(df_birth, df_target, clash_pairs):
 
 def draw_empty_luopan(selected_son_idx):
     fig = go.Figure()
-
     start_angle = selected_son_idx * 15 - 7.5
     end_angle = selected_son_idx * 15 + 7.5
+    
     fig.add_trace(go.Scatterpolar(
         r=[0, 180, 180, 0], theta=[start_angle, start_angle, end_angle, end_angle],
         fill='toself', fillcolor='rgba(241, 196, 15, 0.4)',
@@ -234,70 +227,81 @@ def draw_empty_luopan(selected_son_idx):
             angularaxis=dict(direction="clockwise", rotation=-90, tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24_ZH, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 210])
         ),
-        # Đã giảm height từ 500 xuống 380
         showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=10, b=10, l=10, r=10), height=380
     )
-    
     fig.add_trace(go.Scatterpolar(r=[90, 90], theta=[0, 360], mode='lines', line=dict(color='#7F8C8D', width=1.5), hoverinfo='skip'))
     fig.add_trace(go.Scatterpolar(r=[180, 180], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
     return fig
 
 # ==========================================
-# 4. GIAO DIỆN CHÍNH
+# 4. SIDEBAR & ĐỊA LÝ
 # ==========================================
 geolocator = Nominatim(user_agent="thien_thoi_app_vn")
 tf = TimezoneFinder()
+localS = LocalStorage()
 
-st.sidebar.markdown("### THÔNG SỐ VỊ TRÍ")
+if 'lat' not in st.session_state: st.session_state.lat = 21.0285
+if 'lon' not in st.session_state: st.session_state.lon = 105.8542
+if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
+if 'search_results' not in st.session_state: st.session_state.search_results = None
 
-# Tính năng tìm kiếm địa chỉ tối ưu UI (Cạnh nhau)
-address_input = st.sidebar.text_input("Địa chỉ:", placeholder="Gõ địa chỉ và ấn Enter...")
-col_btn1, col_btn2 = st.sidebar.columns([1, 1]) # Chia đều 2 cột
+st.sidebar.markdown("### VỊ TRÍ")
+saved_locations = localS.getItem("saved_locations")
+if not saved_locations: saved_locations = {}
 
-if col_btn1.button("Tìm Tọa Độ", use_container_width=True, type="primary"):
+if saved_locations:
+    loc_names = ["-- Đã lưu --"] + list(saved_locations.keys())
+    sel_loc = st.sidebar.selectbox("Tải tọa độ", loc_names, label_visibility="collapsed")
+    if sel_loc != "-- Đã lưu --":
+        if st.sidebar.button("Áp dụng", use_container_width=True):
+            st.session_state.lat = saved_locations[sel_loc]['lat']
+            st.session_state.lon = saved_locations[sel_loc]['lon']
+            st.session_state.tz_str = saved_locations[sel_loc]['tz']
+            st.rerun()
+
+address_input = st.sidebar.text_input("Tìm địa chỉ:", placeholder="Enter...")
+col_btn1, col_btn2 = st.sidebar.columns([1, 1]) 
+if col_btn1.button("Tìm", use_container_width=True, type="primary"):
     try:
         locations = geolocator.geocode(address_input, exactly_one=False, limit=5)
-        if locations:
-            st.session_state.search_results = {loc.address: (loc.latitude, loc.longitude) for loc in locations}
-        else:
-            st.sidebar.error("Không tìm thấy địa chỉ.")
-            st.session_state.search_results = None
-    except Exception as e:
-        st.sidebar.error("Lỗi kết nối bản đồ.")
-
-if col_btn2.button("Xóa Tìm Kiếm", use_container_width=True):
+        if locations: st.session_state.search_results = {loc.address: (loc.latitude, loc.longitude) for loc in locations}
+        else: st.session_state.search_results = None
+    except: pass
+if col_btn2.button("Xóa", use_container_width=True):
     st.session_state.search_results = None
 
 if st.session_state.search_results:
-    selected_address = st.sidebar.selectbox("Chọn địa chỉ chính xác:", list(st.session_state.search_results.keys()))
-    if st.sidebar.button("Chốt Tọa Độ", use_container_width=True):
+    selected_address = st.sidebar.selectbox("Kết quả:", list(st.session_state.search_results.keys()))
+    if st.sidebar.button("Lưu & Chốt", use_container_width=True, type="secondary"):
         sel_lat, sel_lon = st.session_state.search_results[selected_address]
         st.session_state.lat = sel_lat
         st.session_state.lon = sel_lon
         auto_tz = tf.timezone_at(lng=sel_lon, lat=sel_lat)
-        if auto_tz:
-            st.session_state.tz_str = auto_tz
-        st.sidebar.success(f"Đã cập nhật Tọa độ & Múi giờ!")
+        if auto_tz: st.session_state.tz_str = auto_tz
+        
+        name_short = selected_address.split(',')[0]
+        saved_locations[name_short] = {'lat': sel_lat, 'lon': sel_lon, 'tz': st.session_state.tz_str}
+        localS.setItem("saved_locations", saved_locations)
         st.session_state.search_results = None
         st.rerun()
 
 st.sidebar.markdown("---")
-lat = st.sidebar.number_input("Vĩ độ (Latitude)", value=st.session_state.lat, format="%.4f")
-lon = st.sidebar.number_input("Kinh độ (Longitude)", value=st.session_state.lon, format="%.4f")
+lat = st.sidebar.number_input("Vĩ độ", value=st.session_state.lat, format="%.4f")
+lon = st.sidebar.number_input("Kinh độ", value=st.session_state.lon, format="%.4f")
 
 all_timezones = pytz.all_timezones
 tz_index = all_timezones.index(st.session_state.tz_str) if st.session_state.tz_str in all_timezones else all_timezones.index('UTC')
-selected_tz = st.sidebar.selectbox("Múi giờ (Timezone)", all_timezones, index=tz_index)
+selected_tz = st.sidebar.selectbox("Múi giờ", all_timezones, index=tz_index)
 
 st.session_state.lat = lat
 st.session_state.lon = lon
 st.session_state.tz_str = selected_tz
 
-st.sidebar.markdown("### THỜI GIAN DỰ KIẾN")
+st.sidebar.markdown("### THỜI GIAN")
 st.session_state.target_date = st.sidebar.date_input("Ngày", value=st.session_state.target_date, min_value=datetime.date(1900, 1, 1))
 st.session_state.target_time = st.sidebar.time_input("Giờ", value=st.session_state.target_time)
 
-st.sidebar.markdown("**Hiển thị Thiên thể**")
+st.sidebar.markdown("### THIÊN THỂ")
 col_cb1, col_cb2 = st.sidebar.columns(2)
 active_bodies = []
 for i, (name, info) in enumerate(CELESTIAL_BODIES.items()):
@@ -311,41 +315,42 @@ local_tz = pytz.timezone(st.session_state.tz_str)
 dt_target = local_tz.localize(datetime.datetime.combine(st.session_state.target_date, st.session_state.target_time))
 df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
-tab1, tab2, tab3, tab4 = st.tabs(["I. THIÊN THỂ ĐÁO SƠN", "II. LÁ SỐ ĐỐI XUNG", "III. TRẠCH NHẬT KÍCH HOẠT", "IV. TUYẾN KHÍ 24 SƠN"])
+tab1, tab2, tab3, tab4 = st.tabs(["THỰC ĐỊA", "LÁ SỐ ĐỐI XUNG", "TRẠCH NHẬT QUÉT TỐI ƯU", "TUYẾN KHÍ 24 SƠN"])
 
 # ----------------- TAB 1 -----------------
 with tab1:
     col1_1, col1_2, col1_3 = st.columns([1, 2, 1])
     with col1_2:
-        st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA | {dt_target.strftime('%H:%M %d/%m/%Y')}**")
+        st.markdown(f"**THỜI ĐIỂM: {dt_target.strftime('%H:%M %d/%m/%Y')}**")
         fig1 = draw_professional_luopan(df_target)
         st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': True}) 
 
-# ----------------- TAB 2 (BỔ SUNG THÔNG TIN NƠI SINH) -----------------
+# ----------------- TAB 2 -----------------
 with tab2:
-    st.markdown("### LÁ SỐ BẨM SINH")
-    st.markdown("Vui lòng nhập Tọa độ & Múi giờ nơi sinh")
+    if saved_locations:
+        sel_loc_b = st.selectbox("Tải nơi sinh đã lưu:", ["-- Tự nhập --"] + list(saved_locations.keys()), label_visibility="collapsed")
+        if sel_loc_b != "-- Tự nhập --":
+            b_lat_default = saved_locations[sel_loc_b]['lat']
+            b_lon_default = saved_locations[sel_loc_b]['lon']
+            b_tz_default = saved_locations[sel_loc_b]['tz']
+        else:
+            b_lat_default, b_lon_default, b_tz_default = 21.0285, 105.8542, 'Asia/Ho_Chi_Minh'
+    else:
+        b_lat_default, b_lon_default, b_tz_default = 21.0285, 105.8542, 'Asia/Ho_Chi_Minh'
     
     col_b1, col_b2, col_b3 = st.columns(3)
-    with col_b1:
-        birth_date = st.date_input("Ngày sinh", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
-    with col_b2:
-        birth_time = st.time_input("Giờ sinh", value=datetime.time(8, 15))
-    with col_b3:
-        b_tz_idx = all_timezones.index('Asia/Ho_Chi_Minh')
-        birth_tz_str = st.selectbox("Múi giờ Nơi sinh", all_timezones, index=b_tz_idx)
+    with col_b1: birth_date = st.date_input("Ngày sinh", value=datetime.date(1993, 1, 7), min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
+    with col_b2: birth_time = st.time_input("Giờ sinh", value=datetime.time(8, 15))
+    with col_b3: birth_tz_str = st.selectbox("Múi giờ", all_timezones, index=all_timezones.index(b_tz_default) if b_tz_default in all_timezones else all_timezones.index('Asia/Ho_Chi_Minh'))
         
     col_b4, col_b5 = st.columns(2)
-    with col_b4:
-        birth_lat = st.number_input("Vĩ độ Nơi sinh", value=21.0285, format="%.4f")
-    with col_b5:
-        birth_lon = st.number_input("Kinh độ Nơi sinh", value=105.8542, format="%.4f")
+    with col_b4: birth_lat = st.number_input("Vĩ độ sinh", value=b_lat_default, format="%.4f")
+    with col_b5: birth_lon = st.number_input("Kinh độ sinh", value=b_lon_default, format="%.4f")
         
     birth_tz = pytz.timezone(birth_tz_str)
     dt_birth = birth_tz.localize(datetime.datetime.combine(birth_date, birth_time))
     
     st.markdown("---")
-    
     df_birth_3 = calculate_positions(dt_birth, birth_lat, birth_lon, ['Thái Dương', 'Thái Âm', 'Mộc Tinh'])
     df_target_3 = calculate_positions(dt_target, lat, lon, ['Thái Dương', 'Thái Âm', 'Mộc Tinh'])
     
@@ -356,54 +361,48 @@ with tab2:
         chi_b = df_birth_3.loc[df_birth_3['Tên'] == star, 'Khu Vực Hoàng Đạo'].values[0]
         chi_t = df_target_3.loc[df_target_3['Tên'] == star, 'Khu Vực Hoàng Đạo'].values[0]
         if check_xung(chi_b, chi_t):
-            clash_pairs.append({
-                'name': star,
-                'birth_deg': df_birth_3.loc[df_birth_3['Tên'] == star, 'Độ Hoàng Đạo'].values[0],
-                'target_deg': df_target_3.loc[df_target_3['Tên'] == star, 'Độ Hoàng Đạo'].values[0]
-            })
+            clash_pairs.append({'name': star, 'birth_deg': df_birth_3.loc[df_birth_3['Tên'] == star, 'Độ Hoàng Đạo'].values[0], 'target_deg': df_target_3.loc[df_target_3['Tên'] == star, 'Độ Hoàng Đạo'].values[0]})
 
     col2_chart, col2_info = st.columns([1.5, 1])
     with col2_chart:
-        st.markdown("#### ĐỒ HÌNH HOÀNG ĐẠO")
+        st.markdown("**ĐỒ HÌNH HOÀNG ĐẠO**")
         fig2 = draw_ecliptic_chart(df_birth_3, df_target_3, clash_pairs)
         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': True})
     
     with col2_info:
-        st.markdown("#### BÁO CÁO PHÂN TÍCH")
-        
+        st.markdown("**BÁO CÁO PHÂN TÍCH**")
         jup_b = df_birth_3.loc[df_birth_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
         jup_t = df_target_3.loc[df_target_3['Tên'] == 'Mộc Tinh', 'Khu Vực Hoàng Đạo'].values[0]
-        if check_xung(jup_b, jup_t): st.markdown(f"> **[CẢNH BÁO - NĂM]** Mộc Tinh ({jup_b} / {jup_t})")
-        else: st.markdown(f"> **[HỢP LỆ - NĂM]** Mộc Tinh ({jup_b} / {jup_t})")
+        if check_xung(jup_b, jup_t): st.markdown(f"> **CẢNH BÁO [NĂM]** Mộc Tinh (Dự kiến: {jup_t} - Sinh: {jup_b})")
+        else: st.markdown(f"> **HỢP LỆ [NĂM]** Mộc Tinh")
             
         sun_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
         sun_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Dương', 'Khu Vực Hoàng Đạo'].values[0]
-        if check_xung(sun_b, sun_t): st.markdown(f"> **[CẢNH BÁO - THÁNG]** Thái Dương ({sun_b} / {sun_t})")
-        else: st.markdown(f"> **[HỢP LỆ - THÁNG]** Thái Dương ({sun_b} / {sun_t})")
+        if check_xung(sun_b, sun_t): st.markdown(f"> **CẢNH BÁO [THÁNG]** Thái Dương (Dự kiến: {sun_t} - Sinh: {sun_b})")
+        else: st.markdown(f"> **HỢP LỆ [THÁNG]** Thái Dương")
             
         moon_b = df_birth_3.loc[df_birth_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
         moon_t = df_target_3.loc[df_target_3['Tên'] == 'Thái Âm', 'Khu Vực Hoàng Đạo'].values[0]
-        if check_xung(moon_b, moon_t): st.markdown(f"> **[CẢNH BÁO - NGÀY]** Thái Âm ({moon_b} / {moon_t})")
-        else: st.markdown(f"> **[HỢP LỆ - NGÀY]** Thái Âm ({moon_b} / {moon_t})")
+        if check_xung(moon_b, moon_t): st.markdown(f"> **CẢNH BÁO [NGÀY]** Thái Âm (Dự kiến: {moon_t} - Sinh: {moon_b})")
+        else: st.markdown(f"> **HỢP LỆ [NGÀY]** Thái Âm")
 
 # ----------------- TAB 3 -----------------
 with tab3:
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
-        target_son = st.selectbox("1. Chọn Sơn mục tiêu", SƠN_24_ZH)
-        son_idx = SƠN_24_ZH.index(target_son)
-        son_center_deg = son_idx * 15
+        target_son = st.selectbox("Sơn mục tiêu", SƠN_24_ZH)
+        son_center_deg = SƠN_24_ZH.index(target_son) * 15
     with col_t2:
-        action_type = st.selectbox("2. Mục đích", ["KÍCH HOẠT (Lực Triều Vượng)", "THÁO DỠ (Lực Triều Suy)"])
+        action_type = st.selectbox("Mục đích", ["KÍCH HOẠT (Triều Vượng)", "THÁO DỠ (Triều Suy)"])
     with col_t3:
-        if action_type == "KÍCH HOẠT (Lực Triều Vượng)":
-            level = st.selectbox("3. Cấp độ", ["Thái Âm", "Đa Tinh Đáo Sơn", "Sóc/Vọng Nguyệt"])
+        if action_type == "KÍCH HOẠT (Triều Vượng)":
+            level = st.selectbox("Cấp độ", ["Thái Âm", "Đa Tinh Đáo Sơn", "Sóc/Vọng Nguyệt"])
             scan_days = 30 if level != "Sóc/Vọng Nguyệt" else 180
         else:
-            st.info("Quét ngày Thượng/Hạ Huyền (Nhật Nguyệt 90°)")
+            st.markdown("<div style='margin-top: 30px;'>Quét Thượng/Hạ Huyền (90°)</div>", unsafe_allow_html=True)
             scan_days = 60
             
-    if st.button("Tìm Kiếm Tối Ưu", type="primary"):
+    if st.button("Tìm Kiếm", type="primary"):
         progress = st.progress(0)
         location = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
         results = []
@@ -415,13 +414,11 @@ with tab3:
             return ts.utc(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour, utc_dt.minute + np.arange(1440))
         
         def get_daily_azimuth(day_date, body_name):
-            t_arr = get_t_arr(day_date)
-            _, az, _ = location.at(t_arr).observe(CELESTIAL_BODIES[body_name]['node']).apparent().altaz()
+            _, az, _ = location.at(get_t_arr(day_date)).observe(CELESTIAL_BODIES[body_name]['node']).apparent().altaz()
             return az.degrees
             
         def get_daily_ecliptic(day_date, body_name):
-            t_arr = get_t_arr(day_date)
-            astrometric = earth.at(t_arr).observe(CELESTIAL_BODIES[body_name]['node'])
+            astrometric = earth.at(get_t_arr(day_date)).observe(CELESTIAL_BODIES[body_name]['node'])
             try:
                 from skyfield.framelib import ecliptic_J2000
                 _, lon_ecl, _ = astrometric.frame_latlon(ecliptic_J2000)
@@ -429,11 +426,10 @@ with tab3:
                 _, lon_ecl, _ = astrometric.ecliptic_latlon()
             return lon_ecl.degrees
 
-        if action_type == "THÁO DỠ (Lực Triều Suy)":
+        if action_type == "THÁO DỠ (Triều Suy)":
             for d in range(scan_days):
                 progress.progress(d / scan_days)
                 check_day = (datetime.datetime.combine(st.session_state.target_date, datetime.time(0,0)) + datetime.timedelta(days=d)).date()
-                
                 sun_ecl_arr = get_daily_ecliptic(check_day, 'Thái Dương')
                 moon_ecl_arr = get_daily_ecliptic(check_day, 'Thái Âm')
                 diff_arr = get_angular_diff_vec(sun_ecl_arr, moon_ecl_arr)
@@ -441,26 +437,13 @@ with tab3:
                 if np.any((diff_arr >= 80) & (diff_arr <= 100)): 
                     sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
                     moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
-                    
                     best_min = np.argmin(np.abs(diff_arr - 90)) 
-                    if np.abs(diff_arr[best_min] - 90) > 5:
-                        best_min = np.argmin(np.abs(diff_arr - 270))
+                    if np.abs(diff_arr[best_min] - 90) > 5: best_min = np.argmin(np.abs(diff_arr - 270))
                     
-                    sun_az = sun_az_arr[best_min]
-                    moon_az = moon_az_arr[best_min]
-                    sun_s = get_24_son(sun_az)
-                    moon_s = get_24_son(moon_az)
-                    
+                    sun_s, moon_s = get_24_son(sun_az_arr[best_min]), get_24_son(moon_az_arr[best_min])
                     if sun_s != target_son and moon_s != target_son:
                         exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(best_min // 60, best_min % 60)))
-                        results.append({
-                            "Ngày": exact_time.strftime("%d/%m/%Y"),
-                            "Giờ Đỉnh": exact_time.strftime("%H:%M"),
-                            "Hiện Tượng": "Nhật Nguyệt vuông góc (Triều Suy)",
-                            "Ghi Chú": f"Nhật: {sun_s}, Nguyệt: {moon_s}",
-                            "Raw_Time": exact_time
-                        })
-                        
+                        results.append({"Ngày": exact_time.strftime("%d/%m/%Y"), "Giờ": exact_time.strftime("%H:%M"), "Hiện Tượng": "Nhật Nguyệt 90°", "Ghi Chú": f"Nhật: {sun_s}, Nguyệt: {moon_s}", "Raw_Time": exact_time})
         else:
             for d in range(scan_days):
                 progress.progress(d / scan_days)
@@ -475,18 +458,13 @@ with tab3:
                     if not is_soc_vong: continue 
                 
                 moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
-                start_deg = son_center_deg - 7.5
-                end_deg = son_center_deg + 7.5
-                if start_deg < 0:
-                    in_son_mask = (moon_az_arr >= 360 + start_deg) | (moon_az_arr < end_deg)
-                else:
-                    in_son_mask = (moon_az_arr >= start_deg) & (moon_az_arr < end_deg)
+                start_deg, end_deg = son_center_deg - 7.5, son_center_deg + 7.5
+                if start_deg < 0: in_son_mask = (moon_az_arr >= 360 + start_deg) | (moon_az_arr < end_deg)
+                else: in_son_mask = (moon_az_arr >= start_deg) & (moon_az_arr < end_deg)
                     
                 valid_mins = np.where(in_son_mask)[0]
-                
                 if len(valid_mins) > 0:
                     best_events_today = []
-                    
                     if level == "Thái Âm":
                         diffs = get_angular_diff_vec(moon_az_arr[valid_mins], son_center_deg)
                         best_local_idx = np.argmin(diffs)
@@ -495,29 +473,18 @@ with tab3:
                         best_events_today.append((diffs[best_local_idx], exact_time, "Thái Âm chính trung", "-"))
                         
                     elif level == "Đa Tinh Đáo Sơn":
-                        other_bodies_az = {}
-                        for ob in scan_bodies:
-                            if ob != 'Thái Âm':
-                                other_bodies_az[ob] = get_daily_azimuth(check_day, ob)
-                                
+                        other_bodies_az = {ob: get_daily_azimuth(check_day, ob) for ob in scan_bodies if ob != 'Thái Âm'}
                         for m in valid_mins:
                             moon_az = moon_az_arr[m]
-                            bodies_in_son = []
-                            for ob, az_arr in other_bodies_az.items():
-                                ob_az = az_arr[m]
-                                if (start_deg < 0 and (ob_az >= 360 + start_deg or ob_az < end_deg)) or (start_deg >= 0 and start_deg <= ob_az < end_deg):
-                                    bodies_in_son.append(ob)
-                                    
+                            bodies_in_son = [ob for ob, az_arr in other_bodies_az.items() if (start_deg < 0 and (az_arr[m] >= 360 + start_deg or az_arr[m] < end_deg)) or (start_deg >= 0 and start_deg <= az_arr[m] < end_deg)]
                             if len(bodies_in_son) >= 1:
                                 exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
-                                
                                 if len(bodies_in_son) >= 2:
                                     sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
-                                    best_events_today.append((sum_diff, exact_time, "Trọng tâm cụm sao", ", ".join(bodies_in_son)))
-                                
+                                    best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
                                 for b in bodies_in_son:
                                     diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
-                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm trùng {b}", ", ".join(bodies_in_son)))
+                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm khớp {b}", ", ".join(bodies_in_son)))
 
                     elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
                         sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
@@ -525,7 +492,6 @@ with tab3:
                             moon_az = moon_az_arr[m]
                             sun_az = sun_az_arr[m]
                             sun_s = get_24_son(sun_az)
-                            
                             exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
                             
                             others = []
@@ -533,76 +499,54 @@ with tab3:
                             for ob in scan_bodies:
                                 if ob not in ['Thái Âm', 'Thái Dương']:
                                     _, ob_az, _ = location.at(t_m).observe(CELESTIAL_BODIES[ob]['node']).apparent().altaz()
-                                    if get_24_son(ob_az.degrees) == target_son:
-                                        others.append(ob)
+                                    if get_24_son(ob_az.degrees) == target_son: others.append(ob)
                             
                             if sun_s == target_son:
                                 diff = get_angular_diff_vec(moon_az, sun_az)
-                                best_events_today.append((diff, exact_time, "Sóc Nguyệt (Nhật Nguyệt cùng Sơn)", ", ".join(others) if others else "-"))
+                                best_events_today.append((diff, exact_time, "Sóc Nguyệt", ", ".join(others) if others else "-"))
                             elif abs(SƠN_24_ZH.index(sun_s) - SƠN_24_ZH.index(target_son)) == 12:
                                 diff = abs(180 - get_angular_diff_vec(moon_az, sun_az))
-                                best_events_today.append((diff, exact_time, "Vọng Nguyệt (Nhật đối đỉnh)", ", ".join(others) if others else "-"))
+                                best_events_today.append((diff, exact_time, "Vọng Nguyệt", ", ".join(others) if others else "-"))
 
                     if best_events_today:
                         df_events = pd.DataFrame(best_events_today, columns=['Diff', 'Time', 'Type', 'Others'])
-                        best_idx = df_events.groupby('Type')['Diff'].idxmin()
-                        for idx in best_idx:
+                        for idx in df_events.groupby('Type')['Diff'].idxmin():
                             row = df_events.loc[idx]
-                            results.append({
-                                "Ngày": row['Time'].strftime("%d/%m/%Y"),
-                                "Giờ Đỉnh": row['Time'].strftime("%H:%M"),
-                                "Hiện Tượng": row['Type'],
-                                "Sai số góc": f"{round(row['Diff'], 2)}°",
-                                "Có mặt tại Sơn": row['Others'],
-                                "Raw_Time": row['Time']
-                            })
+                            results.append({"Ngày": row['Time'].strftime("%d/%m/%Y"), "Giờ": row['Time'].strftime("%H:%M"), "Hiện Tượng": row['Type'], "Sai số": f"{round(row['Diff'], 2)}°", "Thiên thể khác": row['Others'], "Raw_Time": row['Time']})
 
         progress.progress(100)
-        
-        if results: st.session_state.scan_results = results
-        else: st.session_state.scan_results = []
+        st.session_state.scan_results = results if results else []
             
     st.markdown("---")
     if st.session_state.scan_results is not None:
         if len(st.session_state.scan_results) > 0:
             res_list = st.session_state.scan_results
-            st.markdown(f"**TÌM THẤY {len(res_list)} KẾT QUẢ TỐI ƯU:**")
-            df_res = pd.DataFrame(res_list)
-            st.dataframe(df_res.drop(columns=['Raw_Time']), use_container_width=True)
+            st.markdown(f"**TÌM THẤY {len(res_list)} THỜI ĐIỂM:**")
+            st.dataframe(pd.DataFrame(res_list).drop(columns=['Raw_Time']), use_container_width=True)
             
-            st.markdown("### XEM TRỰC TIẾP")
-            options = {f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
-            selected_option = st.selectbox("Mốc thời gian:", list(options.keys()))
+            options = {f"{r['Ngày']} {r['Giờ']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
+            selected_option = st.selectbox("Chọn mốc thời gian xem đồ hình & Đồng bộ:", list(options.keys()))
             
             if st.button("Vẽ Đồ Hình & Đồng Bộ", type="primary"):
                 selected_time = options[selected_option]
-                
-                # 1. Cập nhật thời gian vào Session State (Điều này sẽ làm Sidebar, Tab 1 và Tab 2 tự động nhảy theo)
                 st.session_state.target_date = selected_time.date()
                 st.session_state.target_time = selected_time.time()
-                
-                # 2. Lưu lại thời gian này để vẽ đồ hình preview ngay bên dưới
                 st.session_state.preview_time = selected_time
+                st.rerun() 
                 
-                st.rerun() # Refresh app để áp dụng thay đổi
-                
-            # Render đồ hình tại Tab 3 (Dữ liệu không bị mất do đã lưu vào session_state)
             if 'preview_time' in st.session_state and st.session_state.preview_time is not None:
-                st.success("**Thành Công**")
-                
-                st.markdown(f"**ĐỒ HÌNH THỰC ĐỊA CHI TIẾT TẠI: {st.session_state.preview_time.strftime('%H:%M %d/%m/%Y')}**")
+                st.markdown(f"**ĐỒ HÌNH TẠI: {st.session_state.preview_time.strftime('%H:%M %d/%m/%Y')}**")
                 df_preview = calculate_positions(st.session_state.preview_time, lat, lon, active_bodies)
                 col_p1, col_p2, col_p3 = st.columns([1,1.5,1])
                 with col_p2:
                     fig_preview = draw_professional_luopan(df_preview)
-                    # Dùng timestamp làm key để tránh lỗi trùng lặp biểu đồ của Plotly
                     st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': False}, key=f"preview_{st.session_state.preview_time.timestamp()}")
+        else:
+            st.markdown("> **Không tìm thấy thời điểm phù hợp.**")
 
-# ----------------- TAB 4 (TUYẾN KHÍ 24 SƠN) -----------------
+# ----------------- TAB 4 -----------------
 with tab4:
     warnings_list = load_google_sheets()
-    
-    # Chỉnh lại tỷ lệ cột: Cột hình (col_4a) nhỏ lại thành 1, Cột chữ (col_4b) to ra thành 1.2
     col_4a, col_4b = st.columns([1, 1.2])
     
     with col_4b:
@@ -618,26 +562,22 @@ with tab4:
             for w in warnings_list:
                 if viet_name in w['triggers']:
                     cat = w['category'].upper()
-                    if cat not in grouped_data:
-                        grouped_data[cat] = []
+                    if cat not in grouped_data: grouped_data[cat] = []
                     grouped_data[cat].append(w)
             
             if grouped_data:
                 html_output = ""
                 for cat, items in grouped_data.items():
-                    # Đã xóa bỏ các khoảng trắng lùi đầu dòng để tránh lỗi Markdown Code Block của Streamlit
-                    html_output += f"<div style='margin-bottom: 20px;'>"
-                    html_output += f"<div style='font-weight: bold; font-size: 16px; color: #2C3E50; border-bottom: 1px solid #333; padding-bottom: 4px; margin-bottom: 12px; display: inline-block;'>{cat}</div>"
+                    html_output += f"<div style='margin-bottom: 20px;'><div style='font-weight: bold; font-size: 16px; color: #2C3E50; border-bottom: 1px solid #333; padding-bottom: 4px; margin-bottom: 12px; display: inline-block;'>{cat}</div>"
                     for item in items:
                         desc_html = f"<div style='color: #444; font-size: 14.5px; margin-top: 3px; line-height: 1.5;'>{item['desc']}</div>" if item['desc'] else ""
                         html_output += f"<div style='margin-bottom: 15px;'><span style='font-weight: bold; font-size: 15px; color: #000;'>{item['name']}</span> <span style='font-style: italic; color: #7F8C8D; font-size: 14px;'>{item['triggers']}</span>{desc_html}</div>"
                     html_output += "</div>"
-                
                 st.markdown(html_output, unsafe_allow_html=True)
             else:
-                st.info("Hiện không có ghi chú tuyến khí nào cho Sơn hướng này.")
+                st.info("Không có ghi chú tuyến khí.")
         else:
-            st.warning("Đang tải dữ liệu hoặc không có kết nối tới Google Sheets.")
+            st.warning("Đang tải dữ liệu từ Google Sheets.")
             
     with col_4a:
         st.markdown("<br>", unsafe_allow_html=True)
