@@ -6,7 +6,8 @@ import plotly.graph_objects as go
 import numpy as np
 from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
-from streamlit_local_storage import LocalStorage
+import json
+import os
 
 # ==========================================
 # CẤU HÌNH TRANG & STATE
@@ -28,10 +29,9 @@ st.markdown("""
 try:
     from skyfield.api import load, Topos
 except ImportError:
-    st.error("Yêu cầu khởi động lại máy chủ (Reboot).")
+    st.error("HỆ THỐNG YÊU CẦU KHỞI ĐỘNG LẠI MÁY CHỦ (REBOOT).")
     st.stop()
 
-# Khởi tạo Session State
 local_tz = pytz.timezone('Asia/Ho_Chi_Minh')
 now = datetime.datetime.now(local_tz)
 if 'target_date' not in st.session_state: st.session_state.target_date = now.date()
@@ -41,6 +41,17 @@ if 'lat' not in st.session_state: st.session_state.lat = 21.0285
 if 'lon' not in st.session_state: st.session_state.lon = 105.8542
 if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
 if 'search_results' not in st.session_state: st.session_state.search_results = None
+
+# Hàm quản lý lưu địa điểm bằng JSON (Ổn định 100%)
+LOC_FILE = "saved_locations.json"
+def load_saved_locations():
+    if os.path.exists(LOC_FILE):
+        with open(LOC_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+    return {}
+def save_location(name, lat, lon, tz):
+    data = load_saved_locations()
+    data[name] = {'lat': lat, 'lon': lon, 'tz': tz}
+    with open(LOC_FILE, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE
@@ -60,8 +71,7 @@ def load_google_sheets():
             quan_he = row.get('Quan_He', '').strip()
             than_b = row.get('Than_B', '').strip()
             y_nghia = row.get('Y_Nghia', '').strip()
-            if than_a and than_b:
-                warnings_list.append({"category": than_a, "name": quan_he, "triggers": than_b, "desc": y_nghia})
+            if than_a and than_b: warnings_list.append({"category": than_a, "name": quan_he, "triggers": than_b, "desc": y_nghia})
     except: pass
     return warnings_list
 
@@ -93,14 +103,11 @@ CHAR_TO_VIET = {
     '乾':'Càn', '坤':'Khôn', '艮':'Cấn', '巽':'Tốn'
 }
 DI_CHI_ZH = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
-SƠN_24_ZH = ["子", "癸", "丑", "艮", "寅", "甲", "卯", "乙", "辰", "巽", "巳", "丙", 
-             "午", "丁", "未", "坤", "申", "庚", "酉", "辛", "戌", "乾", "亥", "壬"]
+SƠN_24_ZH = ["子", "癸", "丑", "艮", "寅", "甲", "卯", "乙", "辰", "巽", "巳", "丙", "午", "丁", "未", "坤", "申", "庚", "酉", "辛", "戌", "乾", "亥", "壬"]
 
 def get_24_son(azimuth): return SƠN_24_ZH[int(((azimuth + 7.5) % 360) / 15)]
 def get_di_chi_hoang_dao(degree): return DI_CHI_ZH[int(((degree + 105) % 360) / 30)]
-def get_angular_diff_vec(a1, a2): 
-    diff = np.abs(a1 - a2)
-    return np.minimum(diff, 360 - diff)
+def get_angular_diff_vec(a1, a2): return np.minimum(np.abs(a1 - a2), 360 - np.abs(a1 - a2))
 
 # ==========================================
 # 2. HÀM TÍNH TOÁN
@@ -238,16 +245,9 @@ def draw_empty_luopan(selected_son_idx):
 # ==========================================
 geolocator = Nominatim(user_agent="thien_thoi_app_vn")
 tf = TimezoneFinder()
-localS = LocalStorage()
-
-if 'lat' not in st.session_state: st.session_state.lat = 21.0285
-if 'lon' not in st.session_state: st.session_state.lon = 105.8542
-if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
-if 'search_results' not in st.session_state: st.session_state.search_results = None
 
 st.sidebar.markdown("### VỊ TRÍ")
-saved_locations = localS.getItem("saved_locations")
-if not saved_locations: saved_locations = {}
+saved_locations = load_saved_locations()
 
 if saved_locations:
     loc_names = ["-- Đã lưu --"] + list(saved_locations.keys())
@@ -280,8 +280,7 @@ if st.session_state.search_results:
         if auto_tz: st.session_state.tz_str = auto_tz
         
         name_short = selected_address.split(',')[0]
-        saved_locations[name_short] = {'lat': sel_lat, 'lon': sel_lon, 'tz': st.session_state.tz_str}
-        localS.setItem("saved_locations", saved_locations)
+        save_location(name_short, sel_lat, sel_lon, st.session_state.tz_str)
         st.session_state.search_results = None
         st.rerun()
 
@@ -484,7 +483,7 @@ with tab3:
                                     best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
                                 for b in bodies_in_son:
                                     diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
-                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm khớp {b}", ", ".join(bodies_in_son)))
+                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm trùng {b}", ", ".join(bodies_in_son)))
 
                     elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
                         sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
