@@ -290,7 +290,7 @@ st.sidebar.markdown("---")
 lat = st.sidebar.number_input("Vĩ độ", value=st.session_state.lat, format="%.4f")
 lon = st.sidebar.number_input("Kinh độ", value=st.session_state.lon, format="%.4f")
 
-with st.sidebar.expander("💾 Lưu tọa độ này"):
+with st.sidebar.expander("💾 Lưu"):
     custom_name = st.text_input("Đặt tên địa điểm:")
     if st.button("Lưu vào danh sách", use_container_width=True):
         if custom_name:
@@ -331,7 +331,7 @@ local_tz = pytz.timezone(st.session_state.tz_str)
 dt_target = local_tz.localize(datetime.datetime.combine(st.session_state.target_date, st.session_state.target_time))
 df_target = calculate_positions(dt_target, lat, lon, active_bodies)
 
-tab1, tab2, tab3, tab4 = st.tabs(["THỰC ĐỊA", "LÁ SỐ ĐỐI XUNG", "TRẠCH NHẬT QUÉT TỐI ƯU", "TUYẾN KHÍ 24 SƠN"])
+tab1, tab2, tab3, tab4 = st.tabs(["THIÊN THỂ ĐÁO SƠN", "LÁ SỐ ĐỐI XUNG", "TRẠCH NHẬT VƯỢNG SUY", "TUYẾN KHÍ 24 SƠN"])
 
 # ----------------- TAB 1 -----------------
 with tab1:
@@ -481,6 +481,7 @@ with tab3:
                 valid_mins = np.where(in_son_mask)[0]
                 if len(valid_mins) > 0:
                     best_events_today = []
+                    
                     if level == "Thái Âm":
                         diffs = get_angular_diff_vec(moon_az_arr[valid_mins], son_center_deg)
                         best_local_idx = np.argmin(diffs)
@@ -504,26 +505,38 @@ with tab3:
 
                     elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
                         sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
+                        # TỐI ƯU HÓA: Chỉ tìm phút đỉnh của Nhật - Nguyệt trước
+                        temp_events = []
                         for m in valid_mins:
                             moon_az = moon_az_arr[m]
                             sun_az = sun_az_arr[m]
                             sun_s = get_24_son(sun_az)
-                            exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
-                            
-                            others = []
-                            t_m = ts.utc(exact_time.astimezone(pytz.utc))
-                            for ob in scan_bodies:
-                                if ob not in ['Thái Âm', 'Thái Dương']:
-                                    _, ob_az, _ = location.at(t_m).observe(CELESTIAL_BODIES[ob]['node']).apparent().altaz()
-                                    if get_24_son(ob_az.degrees) == target_son: others.append(ob)
                             
                             if sun_s == target_son:
                                 diff = get_angular_diff_vec(moon_az, sun_az)
-                                best_events_today.append((diff, exact_time, "Sóc Nguyệt", ", ".join(others) if others else "-"))
+                                temp_events.append((diff, m, "Sóc Nguyệt"))
                             elif abs(SƠN_24_ZH.index(sun_s) - SƠN_24_ZH.index(target_son)) == 12:
                                 diff = abs(180 - get_angular_diff_vec(moon_az, sun_az))
-                                best_events_today.append((diff, exact_time, "Vọng Nguyệt", ", ".join(others) if others else "-"))
+                                temp_events.append((diff, m, "Vọng Nguyệt"))
+                                
+                        # NẾU TÌM ĐƯỢC PHÚT ĐỈNH, MỚI QUÉT XEM CÓ SAO KHÁC KHÔNG
+                        if temp_events:
+                            # Lấy phút có sai số nhỏ nhất
+                            best_event = min(temp_events, key=lambda x: x[0])
+                            best_diff, best_m, event_type = best_event
+                            
+                            exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(best_m // 60, best_m % 60)))
+                            
+                            others = []
+                            t_best = ts.utc(exact_time.astimezone(pytz.utc))
+                            for ob in scan_bodies:
+                                if ob not in ['Thái Âm', 'Thái Dương']:
+                                    _, ob_az, _ = location.at(t_best).observe(CELESTIAL_BODIES[ob]['node']).apparent().altaz()
+                                    if get_24_son(ob_az.degrees) == target_son: others.append(ob)
+                                    
+                            best_events_today.append((best_diff, exact_time, event_type, ", ".join(others) if others else "-"))
 
+                    # Lọc đưa vào danh sách kết quả
                     if best_events_today:
                         df_events = pd.DataFrame(best_events_today, columns=['Diff', 'Time', 'Type', 'Others'])
                         for idx in df_events.groupby('Type')['Diff'].idxmin():
