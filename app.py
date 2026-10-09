@@ -42,7 +42,6 @@ if 'lon' not in st.session_state: st.session_state.lon = 105.8542
 if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
 if 'search_results' not in st.session_state: st.session_state.search_results = None
 
-# Hàm quản lý lưu địa điểm bằng JSON (Ổn định 100%)
 LOC_FILE = "saved_locations.json"
 def load_saved_locations():
     if os.path.exists(LOC_FILE):
@@ -249,6 +248,7 @@ tf = TimezoneFinder()
 st.sidebar.markdown("### VỊ TRÍ")
 saved_locations = load_saved_locations()
 
+# Menu chọn địa điểm đã lưu
 if saved_locations:
     loc_names = ["-- Đã lưu --"] + list(saved_locations.keys())
     sel_loc = st.sidebar.selectbox("Tải tọa độ", loc_names, label_visibility="collapsed")
@@ -259,6 +259,7 @@ if saved_locations:
             st.session_state.tz_str = saved_locations[sel_loc]['tz']
             st.rerun()
 
+# Tìm kiếm Google Map
 address_input = st.sidebar.text_input("Tìm địa chỉ:", placeholder="Enter...")
 col_btn1, col_btn2 = st.sidebar.columns([1, 1]) 
 if col_btn1.button("Tìm", use_container_width=True, type="primary"):
@@ -285,8 +286,24 @@ if st.session_state.search_results:
         st.rerun()
 
 st.sidebar.markdown("---")
+# Nhập tay Tọa độ & Tính năng lưu thủ công
 lat = st.sidebar.number_input("Vĩ độ", value=st.session_state.lat, format="%.4f")
 lon = st.sidebar.number_input("Kinh độ", value=st.session_state.lon, format="%.4f")
+
+with st.sidebar.expander("💾 Lưu tọa độ này"):
+    custom_name = st.text_input("Đặt tên địa điểm:")
+    if st.button("Lưu vào danh sách", use_container_width=True):
+        if custom_name:
+            auto_tz = tf.timezone_at(lng=lon, lat=lat)
+            if not auto_tz: auto_tz = 'UTC'
+            save_location(custom_name, lat, lon, auto_tz)
+            st.session_state.lat = lat
+            st.session_state.lon = lon
+            st.session_state.tz_str = auto_tz
+            st.success("Đã lưu!")
+            st.rerun()
+        else:
+            st.error("Vui lòng nhập tên!")
 
 all_timezones = pytz.all_timezones
 tz_index = all_timezones.index(st.session_state.tz_str) if st.session_state.tz_str in all_timezones else all_timezones.index('UTC')
@@ -318,9 +335,9 @@ tab1, tab2, tab3, tab4 = st.tabs(["THỰC ĐỊA", "LÁ SỐ ĐỐI XUNG", "TR�
 
 # ----------------- TAB 1 -----------------
 with tab1:
+    st.markdown(f"**THỜI ĐIỂM: {dt_target.strftime('%H:%M %d/%m/%Y')}**")
     col1_1, col1_2, col1_3 = st.columns([1, 2, 1])
     with col1_2:
-        st.markdown(f"**THỜI ĐIỂM: {dt_target.strftime('%H:%M %d/%m/%Y')}**")
         fig1 = draw_professional_luopan(df_target)
         st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': True}) 
 
@@ -483,7 +500,7 @@ with tab3:
                                     best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
                                 for b in bodies_in_son:
                                     diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
-                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm trùng {b}", ", ".join(bodies_in_son)))
+                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm khớp {b}", ", ".join(bodies_in_son)))
 
                     elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
                         sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
