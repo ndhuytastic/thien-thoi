@@ -8,6 +8,7 @@ from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
 import json
 import os
+import requests
 
 # ==========================================
 # CẤU HÌNH TRANG & STATE
@@ -42,15 +43,42 @@ if 'lon' not in st.session_state: st.session_state.lon = 105.8542
 if 'tz_str' not in st.session_state: st.session_state.tz_str = 'Asia/Ho_Chi_Minh'
 if 'search_results' not in st.session_state: st.session_state.search_results = None
 
-LOC_FILE = "saved_locations.json"
+# ==========================================
+# HÀM QUẢN LÝ LƯU TRỮ ĐÁM MÂY (JSONBIN.IO)
+# ==========================================
 def load_saved_locations():
-    if os.path.exists(LOC_FILE):
-        with open(LOC_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+    try:
+        url = f"https://api.jsonbin.io/v3/b/{st.secrets['JSONBIN_BIN_ID']}"
+        headers = {"X-Master-Key": st.secrets['JSONBIN_KEY']}
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json().get('record', {})
+            # Tránh lỗi nếu record rỗng
+            return data if isinstance(data, dict) else {}
+    except Exception as e:
+        pass
     return {}
+
 def save_location(name, lat, lon, tz):
-    data = load_saved_locations()
-    data[name] = {'lat': lat, 'lon': lon, 'tz': tz}
-    with open(LOC_FILE, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
+    # Cập nhật vào Session State trước để UI phản hồi ngay lập tức
+    if 'saved_locations' not in st.session_state:
+        st.session_state.saved_locations = {}
+    st.session_state.saved_locations[name] = {'lat': lat, 'lon': lon, 'tz': tz}
+    
+    # Đẩy ngầm lên Cloud
+    try:
+        url = f"https://api.jsonbin.io/v3/b/{st.secrets['JSONBIN_BIN_ID']}"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Master-Key": st.secrets['JSONBIN_KEY']
+        }
+        requests.put(url, json=st.session_state.saved_locations, headers=headers)
+    except Exception as e:
+        st.sidebar.error("Lỗi đồng bộ lên Cloud.")
+        
+# Khởi tạo tải dữ liệu từ Cloud 1 lần duy nhất khi mở App
+if 'saved_locations' not in st.session_state:
+    st.session_state.saved_locations = load_saved_locations()
 
 # ==========================================
 # 1. DỮ LIỆU & CACHE
@@ -246,7 +274,7 @@ geolocator = Nominatim(user_agent="thien_thoi_app_vn")
 tf = TimezoneFinder()
 
 st.sidebar.markdown("### VỊ TRÍ")
-saved_locations = load_saved_locations()
+saved_locations = st.session_state.saved_locations
 
 # Menu chọn địa điểm đã lưu
 if saved_locations:
@@ -343,6 +371,7 @@ with tab1:
 
 # ----------------- TAB 2 -----------------
 with tab2:
+    saved_locations = st.session_state.saved_locations
     if saved_locations:
         sel_loc_b = st.selectbox("Tải nơi sinh đã lưu:", ["-- Tự nhập --"] + list(saved_locations.keys()), label_visibility="collapsed")
         if sel_loc_b != "-- Tự nhập --":
