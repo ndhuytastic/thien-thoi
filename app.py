@@ -277,7 +277,7 @@ def draw_empty_luopan(selected_son_idx):
             angularaxis=dict(direction="clockwise", rotation=-90, tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24_ZH, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 210])
         ),
-        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=10, b=10, l=10, r=10), height=380
+        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=10, b=10, l=10, r=10), height=300
     )
     fig.add_trace(go.Scatterpolar(r=[90, 90], theta=[0, 360], mode='lines', line=dict(color='#7F8C8D', width=1.5), hoverinfo='skip'))
     fig.add_trace(go.Scatterpolar(r=[180, 180], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
@@ -621,7 +621,7 @@ with tab3:
 # ----------------- TAB 4 -----------------
 with tab4:
     warnings_list = load_google_sheets()
-    col_4a, col_4b = st.columns([1, 1.2])
+    col_4a, col_4b = st.columns([0.8, 1.5])
     
     with col_4b:
         selected_son_tab4 = st.selectbox("Chọn Sơn Hướng:", SƠN_24_ZH)
