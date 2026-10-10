@@ -628,7 +628,6 @@ with tab4:
         sel_idx = SƠN_24_ZH.index(selected_son_tab4)
         viet_name = CHAR_TO_VIET.get(selected_son_tab4, "")
         
-        st.markdown("**Thông Tin**")
         st.markdown("---")
         
         if warnings_list:
