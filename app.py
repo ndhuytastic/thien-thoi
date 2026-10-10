@@ -53,26 +53,42 @@ def load_saved_locations():
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             data = response.json().get('record', {})
-            # Tránh lỗi nếu record rỗng
-            return data if isinstance(data, dict) else {}
+            
+            # Lọc bỏ cái biến ảo chống Blank (nếu có) khi tải về để UI sạch sẽ
+            if "Trang_Thai" in data: del data["Trang_Thai"]
+            if "_init" in data: del data["_init"]
+                
+            return data if isinstance(data, dict) else {} 
     except Exception as e:
         pass
     return {}
 
 def save_location(name, lat, lon, tz):
-    # Cập nhật vào Session State trước để UI phản hồi ngay lập tức
-    if 'saved_locations' not in st.session_state:
+    if 'saved_locations' not in st.session_state or not isinstance(st.session_state.saved_locations, dict):
         st.session_state.saved_locations = {}
+        
     st.session_state.saved_locations[name] = {'lat': lat, 'lon': lon, 'tz': tz}
     
-    # Đẩy ngầm lên Cloud
     try:
         url = f"https://api.jsonbin.io/v3/b/{st.secrets['JSONBIN_BIN_ID']}"
         headers = {
             "Content-Type": "application/json",
             "X-Master-Key": st.secrets['JSONBIN_KEY']
         }
-        requests.put(url, json=st.session_state.saved_locations, headers=headers)
+        
+        # Copy dữ liệu ra một biến tạm để gửi đi
+        payload_data = dict(st.session_state.saved_locations)
+        
+        # BẢO HIỂM: Nếu danh sách rỗng, nhét 1 biến ảo vào để Jsonbin không báo lỗi "Blank"
+        if not payload_data:
+            payload_data["_init"] = "ok"
+            
+        payload = json.dumps(payload_data)
+        res = requests.put(url, data=payload, headers=headers)
+        
+        if res.status_code not in [200, 201]:
+            st.sidebar.error(f"Lỗi API: {res.text}")
+            
     except Exception as e:
         st.sidebar.error("Lỗi đồng bộ lên Cloud.")
         
