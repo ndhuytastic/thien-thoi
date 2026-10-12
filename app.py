@@ -449,159 +449,246 @@ with tab2:
 
 # ----------------- TAB 3 -----------------
 with tab3:
-    col_t1, col_t2, col_t3 = st.columns(3)
-    with col_t1:
-        target_son = st.selectbox("Sơn mục tiêu", SƠN_24_ZH)
-        son_center_deg = SƠN_24_ZH.index(target_son) * 15
-    with col_t2:
-        action_type = st.selectbox("Mục đích", ["KÍCH HOẠT (Triều Vượng)", "THÁO DỠ (Triều Suy)"])
-    with col_t3:
-        if action_type == "KÍCH HOẠT (Triều Vượng)":
-            level = st.selectbox("Cấp độ", ["Thái Âm", "Đa Tinh Đáo Sơn", "Sóc/Vọng Nguyệt"])
-            scan_days = 30 if level != "Sóc/Vọng Nguyệt" else 180
-        else:
-            st.markdown("<div style='margin-top: 30px;'>Quét Thượng/Hạ Huyền (90°)</div>", unsafe_allow_html=True)
-            scan_days = 60
-            
-    if st.button("Tìm Kiếm", type="primary"):
-        progress = st.progress(0)
-        location = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
-        results = []
-        scan_bodies = active_bodies if len(active_bodies) >= 2 else list(CELESTIAL_BODIES.keys())
-        
-        def get_t_arr(day_date):
-            local_dt = local_tz.localize(datetime.datetime.combine(day_date, datetime.time(0, 0)))
-            utc_dt = local_dt.astimezone(pytz.utc)
-            return ts.utc(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour, utc_dt.minute + np.arange(1440))
-        
-        def get_daily_azimuth(day_date, body_name):
-            _, az, _ = location.at(get_t_arr(day_date)).observe(CELESTIAL_BODIES[body_name]['node']).apparent().altaz()
-            return az.degrees
-            
-        def get_daily_ecliptic(day_date, body_name):
-            astrometric = earth.at(get_t_arr(day_date)).observe(CELESTIAL_BODIES[body_name]['node'])
-            try:
-                from skyfield.framelib import ecliptic_J2000
-                _, lon_ecl, _ = astrometric.frame_latlon(ecliptic_J2000)
-            except:
-                _, lon_ecl, _ = astrometric.ecliptic_latlon()
-            return lon_ecl.degrees
+    scan_mode = st.radio("CHẾ ĐỘ TRẠCH NHẬT:", ["TÌM THỜI ĐIỂM CHO SƠN CỤ THỂ", "TÌM SƠN VƯỢNG TRONG NGÀY"], horizontal=True, label_visibility="collapsed")
+    st.markdown("---")
 
-        if action_type == "THÁO DỠ (Triều Suy)":
-            for d in range(scan_days):
-                progress.progress(d / scan_days)
-                check_day = (datetime.datetime.combine(st.session_state.target_date, datetime.time(0,0)) + datetime.timedelta(days=d)).date()
-                sun_ecl_arr = get_daily_ecliptic(check_day, 'Thái Dương')
-                moon_ecl_arr = get_daily_ecliptic(check_day, 'Thái Âm')
-                diff_arr = get_angular_diff_vec(sun_ecl_arr, moon_ecl_arr)
-                
-                if np.any((diff_arr >= 80) & (diff_arr <= 100)): 
-                    sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
-                    moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
-                    best_min = np.argmin(np.abs(diff_arr - 90)) 
-                    if np.abs(diff_arr[best_min] - 90) > 5: best_min = np.argmin(np.abs(diff_arr - 270))
-                    
-                    sun_s, moon_s = get_24_son(sun_az_arr[best_min]), get_24_son(moon_az_arr[best_min])
-                    if sun_s != target_son and moon_s != target_son:
-                        exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(best_min // 60, best_min % 60)))
-                        results.append({"Ngày": exact_time.strftime("%d/%m/%Y"), "Giờ": exact_time.strftime("%H:%M"), "Hiện Tượng": "Nhật Nguyệt 90°", "Ghi Chú": f"Nhật: {sun_s}, Nguyệt: {moon_s}", "Raw_Time": exact_time})
-        else:
-            for d in range(scan_days):
-                progress.progress(d / scan_days)
-                check_day = (datetime.datetime.combine(st.session_state.target_date, datetime.time(0,0)) + datetime.timedelta(days=d)).date()
-                
-                is_soc_vong = False
-                if level == "Sóc/Vọng Nguyệt":
-                    sun_ecl_noon = get_daily_ecliptic(check_day, 'Thái Dương')[720]
-                    moon_ecl_noon = get_daily_ecliptic(check_day, 'Thái Âm')[720]
-                    phase_diff = get_angular_diff_vec(sun_ecl_noon, moon_ecl_noon)
-                    if phase_diff < 15 or phase_diff > 165: is_soc_vong = True
-                    if not is_soc_vong: continue 
-                
-                moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
-                start_deg, end_deg = son_center_deg - 7.5, son_center_deg + 7.5
-                if start_deg < 0: in_son_mask = (moon_az_arr >= 360 + start_deg) | (moon_az_arr < end_deg)
-                else: in_son_mask = (moon_az_arr >= start_deg) & (moon_az_arr < end_deg)
-                    
-                valid_mins = np.where(in_son_mask)[0]
-                if len(valid_mins) > 0:
-                    best_events_today = []
-                    
-                    if level == "Thái Âm":
-                        diffs = get_angular_diff_vec(moon_az_arr[valid_mins], son_center_deg)
-                        best_local_idx = np.argmin(diffs)
-                        best_min = valid_mins[best_local_idx]
-                        exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(best_min // 60, best_min % 60)))
-                        best_events_today.append((diffs[best_local_idx], exact_time, "Thái Âm chính trung", "-"))
-                        
-                    elif level == "Đa Tinh Đáo Sơn":
-                        other_bodies_az = {ob: get_daily_azimuth(check_day, ob) for ob in scan_bodies if ob != 'Thái Âm'}
-                        for m in valid_mins:
-                            moon_az = moon_az_arr[m]
-                            bodies_in_son = [ob for ob, az_arr in other_bodies_az.items() if (start_deg < 0 and (az_arr[m] >= 360 + start_deg or az_arr[m] < end_deg)) or (start_deg >= 0 and start_deg <= az_arr[m] < end_deg)]
-                            if len(bodies_in_son) >= 1:
-                                exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
-                                if len(bodies_in_son) >= 2:
-                                    sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
-                                    best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
-                                for b in bodies_in_son:
-                                    diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
-                                    best_events_today.append((diff_pair, exact_time, f"Thái Âm khớp {b}", ", ".join(bodies_in_son)))
+    def get_t_arr(day_date):
+        local_dt = local_tz.localize(datetime.datetime.combine(day_date, datetime.time(0, 0)))
+        utc_dt = local_dt.astimezone(pytz.utc)
+        return ts.utc(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour, utc_dt.minute + np.arange(1440))
+    
+    def get_daily_azimuth(day_date, body_name):
+        _, az, _ = location.at(get_t_arr(day_date)).observe(CELESTIAL_BODIES[body_name]['node']).apparent().altaz()
+        return az.degrees
+        
+    def get_daily_ecliptic(day_date, body_name):
+        astrometric = earth.at(get_t_arr(day_date)).observe(CELESTIAL_BODIES[body_name]['node'])
+        try:
+            from skyfield.framelib import ecliptic_J2000
+            _, lon_ecl, _ = astrometric.frame_latlon(ecliptic_J2000)
+        except:
+            _, lon_ecl, _ = astrometric.ecliptic_latlon()
+        return lon_ecl.degrees
 
-                    elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
+    location = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
+    scan_bodies = active_bodies if len(active_bodies) >= 2 else list(CELESTIAL_BODIES.keys())
+
+    # =========================================================================
+    # CHẾ ĐỘ 1: TÌM THỜI ĐIỂM CHO SƠN CỤ THỂ
+    # =========================================================================
+    if scan_mode == "TÌM THỜI ĐIỂM CHO SƠN CỤ THỂ":
+        col_t1, col_t2, col_t3 = st.columns(3)
+        with col_t1:
+            target_son = st.selectbox("Sơn mục tiêu", SƠN_24_ZH)
+            son_idx = SƠN_24_ZH.index(target_son)
+            son_center_deg = son_idx * 15
+        with col_t2:
+            action_type = st.selectbox("Mục đích", ["KÍCH HOẠT (Triều Vượng)", "THÁO DỠ (Triều Suy)"])
+        with col_t3:
+            if action_type == "KÍCH HOẠT (Triều Vượng)":
+                level = st.selectbox("Cấp độ", ["Thái Âm", "Đa Tinh Đáo Sơn", "Sóc/Vọng Nguyệt"])
+                scan_days = 30 if level != "Sóc/Vọng Nguyệt" else 180
+            else:
+                st.markdown("<div style='margin-top: 30px; font-style: italic; color: #555;'>Quét Thượng/Hạ Huyền (90°)</div>", unsafe_allow_html=True)
+                scan_days = 60
+                
+        if st.button("Thực Thi Quét", type="primary", key="btn_mode1"):
+            progress = st.progress(0)
+            results = []
+            
+            if action_type == "THÁO DỠ (Triều Suy)":
+                for d in range(scan_days):
+                    progress.progress(d / scan_days)
+                    check_day = (datetime.datetime.combine(st.session_state.target_date, datetime.time(0,0)) + datetime.timedelta(days=d)).date()
+                    sun_ecl_arr = get_daily_ecliptic(check_day, 'Thái Dương')
+                    moon_ecl_arr = get_daily_ecliptic(check_day, 'Thái Âm')
+                    diff_arr = get_angular_diff_vec(sun_ecl_arr, moon_ecl_arr)
+                    
+                    if np.any((diff_arr >= 80) & (diff_arr <= 100)): 
                         sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
-                        # TỐI ƯU HÓA: Chỉ tìm phút đỉnh của Nhật - Nguyệt trước
-                        temp_events = []
-                        for m in valid_mins:
-                            moon_az = moon_az_arr[m]
-                            sun_az = sun_az_arr[m]
-                            sun_s = get_24_son(sun_az)
+                        moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
+                        best_min = np.argmin(np.abs(diff_arr - 90)) 
+                        if np.abs(diff_arr[best_min] - 90) > 5: best_min = np.argmin(np.abs(diff_arr - 270))
+                        
+                        sun_s, moon_s = get_24_son(sun_az_arr[best_min]), get_24_son(moon_az_arr[best_min])
+                        if sun_s != target_son and moon_s != target_son:
+                            exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(best_min // 60, best_min % 60)))
+                            results.append({"Ngày": exact_time.strftime("%d/%m/%Y"), "Giờ": exact_time.strftime("%H:%M"), "Hiện Tượng": "Nhật Nguyệt 90°", "Ghi Chú": f"Nhật: {sun_s}, Nguyệt: {moon_s}", "Raw_Time": exact_time})
+            else:
+                for d in range(scan_days):
+                    progress.progress(d / scan_days)
+                    check_day = (datetime.datetime.combine(st.session_state.target_date, datetime.time(0,0)) + datetime.timedelta(days=d)).date()
+                    
+                    is_soc_vong = False
+                    if level == "Sóc/Vọng Nguyệt":
+                        sun_ecl_noon = get_daily_ecliptic(check_day, 'Thái Dương')[720]
+                        moon_ecl_noon = get_daily_ecliptic(check_day, 'Thái Âm')[720]
+                        phase_diff = get_angular_diff_vec(sun_ecl_noon, moon_ecl_noon)
+                        if phase_diff < 15 or phase_diff > 165: is_soc_vong = True
+                        if not is_soc_vong: continue 
+                    
+                    moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
+                    start_deg, end_deg = son_center_deg - 7.5, son_center_deg + 7.5
+                    if start_deg < 0: in_son_mask = (moon_az_arr >= 360 + start_deg) | (moon_az_arr < end_deg)
+                    else: in_son_mask = (moon_az_arr >= start_deg) & (moon_az_arr < end_deg)
+                        
+                    valid_mins = np.where(in_son_mask)[0]
+                    if len(valid_mins) > 0:
+                        best_events_today = []
+                        if level == "Thái Âm":
+                            diffs = get_angular_diff_vec(moon_az_arr[valid_mins], son_center_deg)
+                            best_local_idx = np.argmin(diffs)
+                            best_min = valid_mins[best_local_idx]
+                            exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(best_min // 60, best_min % 60)))
+                            best_events_today.append((diffs[best_local_idx], exact_time, "Thái Âm chính trung", "-"))
                             
-                            if sun_s == target_son:
-                                diff = get_angular_diff_vec(moon_az, sun_az)
-                                temp_events.append((diff, m, "Sóc Nguyệt"))
-                            elif abs(SƠN_24_ZH.index(sun_s) - SƠN_24_ZH.index(target_son)) == 12:
-                                diff = abs(180 - get_angular_diff_vec(moon_az, sun_az))
-                                temp_events.append((diff, m, "Vọng Nguyệt"))
+                        elif level == "Đa Tinh Đáo Sơn":
+                            other_bodies_az = {ob: get_daily_azimuth(check_day, ob) for ob in scan_bodies if ob != 'Thái Âm'}
+                            for m in valid_mins:
+                                moon_az = moon_az_arr[m]
+                                bodies_in_son = [ob for ob, az_arr in other_bodies_az.items() if (start_deg < 0 and (az_arr[m] >= 360 + start_deg or az_arr[m] < end_deg)) or (start_deg >= 0 and start_deg <= az_arr[m] < end_deg)]
+                                if len(bodies_in_son) >= 1:
+                                    exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
+                                    if len(bodies_in_son) >= 2:
+                                        sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
+                                        best_events_today.append((sum_diff, exact_time, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
+                                    for b in bodies_in_son:
+                                        diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
+                                        best_events_today.append((diff_pair, exact_time, f"Thái Âm khớp {b}", ", ".join(bodies_in_son)))
+
+                        elif level == "Sóc/Vọng Nguyệt" and is_soc_vong:
+                            sun_az_arr = get_daily_azimuth(check_day, 'Thái Dương')
+                            for m in valid_mins:
+                                moon_az = moon_az_arr[m]
+                                sun_az = sun_az_arr[m]
+                                sun_s = get_24_son(sun_az)
+                                exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
                                 
-                        # NẾU TÌM ĐƯỢC PHÚT ĐỈNH, MỚI QUÉT XEM CÓ SAO KHÁC KHÔNG
-                        if temp_events:
-                            # Lấy phút có sai số nhỏ nhất
-                            best_event = min(temp_events, key=lambda x: x[0])
-                            best_diff, best_m, event_type = best_event
-                            
-                            exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(best_m // 60, best_m % 60)))
-                            
-                            others = []
-                            t_best = ts.utc(exact_time.astimezone(pytz.utc))
-                            for ob in scan_bodies:
-                                if ob not in ['Thái Âm', 'Thái Dương']:
-                                    _, ob_az, _ = location.at(t_best).observe(CELESTIAL_BODIES[ob]['node']).apparent().altaz()
-                                    if get_24_son(ob_az.degrees) == target_son: others.append(ob)
-                                    
-                            best_events_today.append((best_diff, exact_time, event_type, ", ".join(others) if others else "-"))
+                                others = []
+                                t_m = ts.utc(exact_time.astimezone(pytz.utc))
+                                for ob in scan_bodies:
+                                    if ob not in ['Thái Âm', 'Thái Dương']:
+                                        _, ob_az, _ = location.at(t_m).observe(CELESTIAL_BODIES[ob]['node']).apparent().altaz()
+                                        if get_24_son(ob_az.degrees) == target_son: others.append(ob)
+                                
+                                if sun_s == target_son:
+                                    diff = get_angular_diff_vec(moon_az, sun_az)
+                                    best_events_today.append((diff, exact_time, "Sóc Nguyệt", ", ".join(others) if others else "-"))
+                                elif abs(SƠN_24_ZH.index(sun_s) - SƠN_24_ZH.index(target_son)) == 12:
+                                    diff = abs(180 - get_angular_diff_vec(moon_az, sun_az))
+                                    best_events_today.append((diff, exact_time, "Vọng Nguyệt", ", ".join(others) if others else "-"))
 
-                    # Lọc đưa vào danh sách kết quả
-                    if best_events_today:
-                        df_events = pd.DataFrame(best_events_today, columns=['Diff', 'Time', 'Type', 'Others'])
-                        for idx in df_events.groupby('Type')['Diff'].idxmin():
-                            row = df_events.loc[idx]
-                            results.append({"Ngày": row['Time'].strftime("%d/%m/%Y"), "Giờ": row['Time'].strftime("%H:%M"), "Hiện Tượng": row['Type'], "Sai số": f"{round(row['Diff'], 2)}°", "Thiên thể khác": row['Others'], "Raw_Time": row['Time']})
+                        if best_events_today:
+                            df_events = pd.DataFrame(best_events_today, columns=['Diff', 'Time', 'Type', 'Others'])
+                            for idx in df_events.groupby('Type')['Diff'].idxmin():
+                                row = df_events.loc[idx]
+                                results.append({"Ngày": row['Time'].strftime("%d/%m/%Y"), "Giờ": row['Time'].strftime("%H:%M"), "Hiện Tượng": row['Type'], "Sai số": f"{round(row['Diff'], 2)}°", "Thiên thể khác": row['Others'], "Raw_Time": row['Time']})
 
-        progress.progress(100)
-        st.session_state.scan_results = results if results else []
+            progress.progress(100)
+            st.session_state.scan_results = results if results else []
+
+    # =========================================================================
+    # CHẾ ĐỘ 2: TÌM SƠN VƯỢNG TRONG NGÀY
+    # =========================================================================
+    else:
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            target_day_scan = st.date_input("Ngày thực thi", value=st.session_state.target_date)
+        with col_m2:
+            level_m2 = st.selectbox("Cấp độ Vượng", ["Đa Tinh Đáo Sơn", "Sóc/Vọng Nguyệt"])
             
+        if st.button("Thực Thi Quét Toàn Bàn", type="primary", key="btn_mode2"):
+            results = []
+            check_day = target_day_scan
+            
+            is_soc_vong = False
+            if level_m2 == "Sóc/Vọng Nguyệt":
+                sun_ecl_noon = get_daily_ecliptic(check_day, 'Thái Dương')[720]
+                moon_ecl_noon = get_daily_ecliptic(check_day, 'Thái Âm')[720]
+                phase_diff = get_angular_diff_vec(sun_ecl_noon, moon_ecl_noon)
+                if phase_diff < 15 or phase_diff > 165: is_soc_vong = True
+                
+            if level_m2 == "Sóc/Vọng Nguyệt" and not is_soc_vong:
+                st.info("Ngày này không có hiện tượng Sóc hoặc Vọng Nguyệt trên Hoàng đạo.")
+                st.session_state.scan_results = []
+            else:
+                with st.spinner("Đang quét 24 Sơn..."):
+                    moon_az_arr = get_daily_azimuth(check_day, 'Thái Âm')
+                    other_bodies_az = {ob: get_daily_azimuth(check_day, ob) for ob in scan_bodies if ob != 'Thái Âm'}
+                    events_all_sons = []
+                    
+                    for m in range(1440):
+                        moon_az = moon_az_arr[m]
+                        current_son = get_24_son(moon_az)
+                        son_idx = SƠN_24_ZH.index(current_son)
+                        son_center_deg = son_idx * 15
+                        
+                        start_deg, end_deg = son_center_deg - 7.5, son_center_deg + 7.5
+                        
+                        bodies_in_son = []
+                        for ob, az_arr in other_bodies_az.items():
+                            o_az = az_arr[m]
+                            if (start_deg < 0 and (o_az >= 360 + start_deg or o_az < end_deg)) or (start_deg >= 0 and start_deg <= o_az < end_deg):
+                                bodies_in_son.append(ob)
+                                
+                        exact_time = local_tz.localize(datetime.datetime.combine(check_day, datetime.time(m // 60, m % 60)))
+                        
+                        if level_m2 == "Đa Tinh Đáo Sơn" and len(bodies_in_son) >= 1:
+                            if len(bodies_in_son) >= 2:
+                                sum_diff = sum([get_angular_diff_vec(moon_az, other_bodies_az[b][m]) for b in bodies_in_son])
+                                events_all_sons.append((sum_diff, exact_time, current_son, "Trọng tâm Đa tinh", ", ".join(bodies_in_son)))
+                            for b in bodies_in_son:
+                                diff_pair = get_angular_diff_vec(moon_az, other_bodies_az[b][m])
+                                events_all_sons.append((diff_pair, exact_time, current_son, f"Khớp {b}", ", ".join(bodies_in_son)))
+                                
+                        elif level_m2 == "Sóc/Vọng Nguyệt" and is_soc_vong:
+                            sun_az = other_bodies_az['Thái Dương'][m]
+                            sun_s = get_24_son(sun_az)
+                            others = [b for b in bodies_in_son if b != 'Thái Dương']
+                            
+                            if sun_s == current_son:
+                                diff = get_angular_diff_vec(moon_az, sun_az)
+                                events_all_sons.append((diff, exact_time, current_son, "Sóc Nguyệt", ", ".join(others) if others else "-"))
+                            elif abs(SƠN_24_ZH.index(sun_s) - son_idx) == 12:
+                                diff = abs(180 - get_angular_diff_vec(moon_az, sun_az))
+                                events_all_sons.append((diff, exact_time, current_son, "Vọng Nguyệt", ", ".join(others) if others else "-"))
+                    
+                    if events_all_sons:
+                        df_ev = pd.DataFrame(events_all_sons, columns=['Diff', 'Time', 'Son', 'Type', 'Others'])
+                        best_indices = df_ev.groupby(['Son', 'Type'])['Diff'].idxmin()
+                        for idx in best_indices:
+                            row = df_ev.loc[idx]
+                            results.append({
+                                "Ngày": row['Time'].strftime("%d/%m/%Y"),
+                                "Giờ Đỉnh": row['Time'].strftime("%H:%M"),
+                                "Sơn Vượng": row['Son'],
+                                "Hiện Tượng": row['Type'],
+                                "Sai số": f"{round(row['Diff'], 2)}°",
+                                "Thiên thể khác": row['Others'],
+                                "Raw_Time": row['Time']
+                            })
+                        results = sorted(results, key=lambda x: x["Raw_Time"])
+                st.session_state.scan_results = results if results else []
+
+    # =========================================================================
+    # HIỂN THỊ KẾT QUẢ VÀ ĐỒNG BỘ (DÙNG CHUNG CHO CẢ 2 CHẾ ĐỘ)
+    # =========================================================================
     st.markdown("---")
     if st.session_state.scan_results is not None:
         if len(st.session_state.scan_results) > 0:
             res_list = st.session_state.scan_results
-            st.markdown(f"**TÌM THẤY {len(res_list)} THỜI ĐIỂM:**")
-            st.dataframe(pd.DataFrame(res_list).drop(columns=['Raw_Time']), use_container_width=True)
+            st.markdown(f"**TÌM THẤY {len(res_list)} KẾT QUẢ:**")
+            df_res = pd.DataFrame(res_list)
+            st.dataframe(df_res.drop(columns=['Raw_Time']), use_container_width=True)
             
-            options = {f"{r['Ngày']} {r['Giờ']} - {r['Hiện Tượng']}": r['Raw_Time'] for r in res_list}
+            options = {}
+            for r in res_list:
+                son_str = f" [Sơn {r.get('Sơn Vượng', target_son if scan_mode == 'TÌM THỜI ĐIỂM CHO SƠN CỤ THỂ' else '')}]"
+                options[f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}{son_str}"] = r['Raw_Time']
+                
             selected_option = st.selectbox("Chọn mốc thời gian xem đồ hình & Đồng bộ:", list(options.keys()))
             
-            if st.button("Vẽ Đồ Hình & Đồng Bộ", type="primary"):
+            if st.button("Vẽ Đồ Hình & Đồng Bộ", type="primary", key="btn_draw"):
                 selected_time = options[selected_option]
                 st.session_state.target_date = selected_time.date()
                 st.session_state.target_time = selected_time.time()
@@ -616,7 +703,8 @@ with tab3:
                     fig_preview = draw_professional_luopan(df_preview)
                     st.plotly_chart(fig_preview, use_container_width=True, config={'displayModeBar': False}, key=f"preview_{st.session_state.preview_time.timestamp()}")
         else:
-            st.markdown("> **Không tìm thấy thời điểm phù hợp.**")
+            if scan_mode == "TÌM THỜI ĐIỂM CHO SƠN CỤ THỂ" or (scan_mode == "TÌM SƠN VƯỢNG TRONG NGÀY" and level_m2 != "Sóc/Vọng Nguyệt" or is_soc_vong):
+                st.markdown("> Không tìm thấy thời điểm phù hợp.")
 
 # ----------------- TAB 4 -----------------
 with tab4:
