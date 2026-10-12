@@ -277,7 +277,7 @@ def draw_empty_luopan(selected_son_idx):
             angularaxis=dict(direction="clockwise", rotation=-90, tickmode="array", tickvals=[i * 15 for i in range(24)], ticktext=SƠN_24_ZH, showline=False, showgrid=False),
             radialaxis=dict(visible=False, range=[0, 210])
         ),
-        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=10, b=10, l=10, r=10), height=300
+        showlegend=False, paper_bgcolor="white", plot_bgcolor="white", margin=dict(t=35, b=35, l=35, r=35), height=400
     )
     fig.add_trace(go.Scatterpolar(r=[90, 90], theta=[0, 360], mode='lines', line=dict(color='#7F8C8D', width=1.5), hoverinfo='skip'))
     fig.add_trace(go.Scatterpolar(r=[180, 180], theta=[0, 360], mode='lines', line=dict(color='#333333', width=2), hoverinfo='skip'))
