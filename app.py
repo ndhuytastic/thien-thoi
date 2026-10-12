@@ -683,7 +683,8 @@ with tab3:
             
             options = {}
             for r in res_list:
-                son_str = f" [Sơn {r.get('Sơn Vượng', target_son if scan_mode == 'TÌM THỜI ĐIỂM CHO SƠN CỤ THỂ' else '')}]"
+                # Nếu dict có key 'Sơn Vượng' (tức là quét từ Chế độ 2) thì in thêm tên Sơn, ngược lại bỏ qua
+                son_str = f" [Sơn {r['Sơn Vượng']}]" if 'Sơn Vượng' in r else ""
                 options[f"{r['Ngày']} {r['Giờ Đỉnh']} - {r['Hiện Tượng']}{son_str}"] = r['Raw_Time']
                 
             selected_option = st.selectbox("Chọn mốc thời gian xem đồ hình & Đồng bộ:", list(options.keys()))
